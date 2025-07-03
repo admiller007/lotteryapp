@@ -3,13 +3,19 @@
 import { useAppContext } from "@/context/AppContext";
 import { Badge } from "@/components/ui/badge";
 import { Ticket } from "lucide-react";
+import { useEffect, useState } from "react";
 
 export default function UserTicketInfo() {
   const { state, remainingTickets } = useAppContext();
   const { currentUser } = state;
+  const [isHydrated, setIsHydrated] = useState(false);
 
-  if (!currentUser) {
-    return null; // Don't render if no user is logged in
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
+
+  if (!isHydrated || !currentUser) {
+    return null; // Don't render during SSR or if no user is logged in
   }
 
   return (

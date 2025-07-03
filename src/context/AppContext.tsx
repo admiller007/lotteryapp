@@ -40,7 +40,11 @@ const initialState: AuctionContextState = {
   currentUser: null, // No user logged in initially
   isAuctionOpen: true,
   winners: {},
-  allUsers: {}, // Populated on login
+  allUsers: {
+    // Pre-populated admin users
+    'ADMIN001': { name: 'Admin User', tickets: 100, facilityName: 'Admin Office', pin: 'admin123' },
+    'DEV007': { name: 'Developer Admin', tickets: 100, facilityName: 'Dev Office', pin: 'dev456' },
+  },
 };
 
 const AppContext = createContext<{
@@ -58,35 +62,55 @@ const AppContext = createContext<{
 const auctionReducer = (state: AuctionContextState, action: AuctionAction): AuctionContextState => {
   switch (action.type) {
     case 'LOGIN_USER': {
-      const { firstName, lastName, employeeId } = action.payload;
+      const { firstName, lastName, facilityName, pin } = action.payload;
       const userName = `${firstName} ${lastName}`;
-      const existingUser = Object.values(state.allUsers).find(u => u.name === userName); 
+      
+      console.log('Login attempt:', { firstName, lastName, facilityName, pin, userName });
+      console.log('Available users:', state.allUsers);
+      
+      // Find user in uploaded users with matching credentials
+      const userEntry = Object.entries(state.allUsers).find(([_, userData]) => {
+        console.log('Checking user:', userData, 'against:', { userName, facilityName, pin });
+        return userData.name === userName && 
+               userData.facilityName === facilityName && 
+               userData.pin === pin;
+      });
+      
+      console.log('User entry found:', userEntry);
+      
+      if (!userEntry) {
+          console.log('Login failed - no matching user found');
+          return {
+            ...state,
+            lastAction: { type: 'LOGIN_ERROR', message: 'Invalid credentials' },
+          };
+      }
+      
+      const [userId, existingUserData] = userEntry;
+      const ticketCount = existingUserData.tickets || 100;
       
       const newUser: AppUser = {
-        id: employeeId, 
+        id: userId, 
         firstName,
         lastName,
-        employeeId,
+        employeeId: userId, // Using userId as employeeId for now
+        facilityName,
         name: userName,
-        totalInitialTickets: 100, 
-        allocatedTickets: existingUser && state.currentUser?.id === employeeId ? state.currentUser.allocatedTickets : {}, 
+        totalInitialTickets: ticketCount, 
+        allocatedTickets: state.currentUser?.id === userId ? state.currentUser.allocatedTickets : {}, 
       };
       
-      toast({ title: "Login Successful", description: `Welcome, ${userName}!` });
       return {
         ...state,
         currentUser: newUser,
-        allUsers: {
-          ...state.allUsers,
-          [employeeId]: { name: userName },
-        },
+        lastAction: { type: 'LOGIN_SUCCESS', userName },
       };
     }
     case 'LOGOUT_USER': {
-      toast({ title: "Logged Out", description: "You have been successfully logged out." });
       return {
         ...state,
         currentUser: null,
+        lastAction: { type: 'LOGOUT_SUCCESS' },
       };
     }
     case 'ADD_PRIZE': {
@@ -134,8 +158,10 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       const potentialNewTotalAllocated = totalAllocatedByCurrentUser + count;
 
       if (potentialNewTotalAllocated > state.currentUser.totalInitialTickets) {
-        toast({ title: "Not enough tickets", description: "You don't have enough tickets to make this allocation.", variant: "destructive" });
-        return state;
+        return {
+          ...state,
+          lastAction: { type: 'ALLOCATION_ERROR', message: "You don't have enough tickets to make this allocation." },
+        };
       }
       
       const updatedAllocatedTickets = { ...state.currentUser.allocatedTickets, [prizeId]: count };
@@ -189,8 +215,12 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
           usersWhoWon.add(winnerId);
         }
       }
-      toast({ title: "Winners Drawn!", description: "The auction has ended and winners have been selected."});
-      return { ...state, winners: newWinners, isAuctionOpen: false };
+      return { 
+        ...state, 
+        winners: newWinners, 
+        isAuctionOpen: false,
+        lastAction: { type: 'WINNERS_DRAWN' },
+      };
     }
     case 'RESET_AUCTION': {
       if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state; 
@@ -271,6 +301,44 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
 
       return { ...state, winners: updatedWinners };
     }
+    case 'SET_FIREBASE_PRIZES': {
+      return {
+        ...state,
+        prizes: action.payload,
+      };
+    }
+    case 'UPLOAD_USERS': {
+      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) {
+        return {
+          ...state,
+          lastAction: { type: 'ACCESS_DENIED', message: "Admin login required to upload users." },
+        };
+      }
+
+      const newUsers: Record<string, { name: string; tickets: number; facilityName: string; pin: string }> = {};
+      
+      action.payload.forEach((userData) => {
+        const userName = `${userData.firstName} ${userData.lastName}`;
+        // Create deterministic user ID based on unique user info
+        const userId = `user_${userName.replace(/\s+/g, '_').toLowerCase()}_${userData.facilityName.replace(/\s+/g, '_').toLowerCase()}_${userData.pin}`;
+        
+        newUsers[userId] = {
+          name: userName,
+          tickets: userData.tickets,
+          facilityName: userData.facilityName,
+          pin: userData.pin,
+        };
+      });
+
+      return {
+        ...state,
+        allUsers: {
+          ...state.allUsers,
+          ...newUsers,
+        },
+        lastAction: { type: 'USERS_UPLOADED', message: `Successfully uploaded ${action.payload.length} users` },
+      };
+    }
     default:
       return state;
   }
@@ -284,7 +352,24 @@ const loadPersistedState = (): AuctionContextState => {
     const saved = localStorage.getItem('lotteryAppState');
     if (saved) {
       const parsed = JSON.parse(saved);
-      return { ...initialState, ...parsed };
+      // Merge persisted allUsers with initial admin users to ensure admins are always available
+      const mergedUsers = {
+        ...initialState.allUsers, // Start with admin users
+        ...parsed.allUsers, // Add any persisted users from CSV uploads
+      };
+      
+      // If there's a current user in localStorage, restore them
+      let restoredCurrentUser = null;
+      if (parsed.currentUser) {
+        restoredCurrentUser = parsed.currentUser;
+      }
+      
+      return { 
+        ...initialState, 
+        ...parsed,
+        allUsers: mergedUsers,
+        currentUser: restoredCurrentUser
+      };
     }
   } catch (error) {
     console.error('Error loading persisted state:', error);

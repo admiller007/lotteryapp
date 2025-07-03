@@ -15,11 +15,12 @@ export default function LoginPage() {
   const router = useRouter();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [employeeId, setEmployeeId] = useState('');
+  const [facilityName, setFacilityName] = useState('');
+  const [pin, setPin] = useState('');
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (!firstName.trim() || !lastName.trim() || !employeeId.trim()) {
+    if (!firstName.trim() || !lastName.trim() || !facilityName.trim() || !pin.trim()) {
       toast({
         title: "Missing Information",
         description: "Please fill in all fields.",
@@ -27,7 +28,7 @@ export default function LoginPage() {
       });
       return;
     }
-    dispatch({ type: 'LOGIN_USER', payload: { firstName, lastName, employeeId } });
+    dispatch({ type: 'LOGIN_USER', payload: { firstName, lastName, facilityName, pin } });
     router.push('/'); // Redirect to home page after login
   };
 
@@ -63,13 +64,24 @@ export default function LoginPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="employeeId">Employee ID</Label>
+              <Label htmlFor="facilityName">Facility Name</Label>
               <Input
-                id="employeeId"
-                value={employeeId}
-                onChange={(e) => setEmployeeId(e.target.value)}
+                id="facilityName"
+                value={facilityName}
+                onChange={(e) => setFacilityName(e.target.value)}
                 required
-                placeholder="Enter your employee ID"
+                placeholder="Enter your facility name"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="pin">PIN</Label>
+              <Input
+                id="pin"
+                type="password"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                required
+                placeholder="Enter your PIN"
               />
             </div>
           </CardContent>

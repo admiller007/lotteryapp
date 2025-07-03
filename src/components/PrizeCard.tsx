@@ -19,15 +19,22 @@ export default function PrizeCard({ prize }: PrizeCardProps) {
   const winner = winnerId ? allUsers[winnerId] : null;
   const isCurrentUserWinner = currentUser && winnerId === currentUser.id;
 
+  // Debug logging
+  console.log(`PrizeCard Debug - ${prize.name}:`, {
+    prizeId: prize.id,
+    imageUrl: prize.imageUrl,
+    fullPrize: prize
+  });
+
   return (
-    <Card className="flex flex-col overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300">
+    <Card className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300">
       <CardHeader className="p-0 relative">
         <Image
           src={prize.imageUrl || 'https://placehold.co/300x200.png'}
           alt={prize.name}
           width={300}
           height={200}
-          className="w-full h-48 object-cover"
+          className="w-full h-auto object-contain"
           data-ai-hint="prize item"
         />
         {isCurrentUserWinner && (
@@ -37,9 +44,9 @@ export default function PrizeCard({ prize }: PrizeCardProps) {
            </div>
         )}
       </CardHeader>
-      <CardContent className="p-4 flex-grow">
+      <CardContent className="p-4">
         <CardTitle className="text-xl font-headline mb-1">{prize.name}</CardTitle>
-        <CardDescription className="text-sm text-muted-foreground mb-3 h-20 overflow-y-auto">
+        <CardDescription className="text-sm text-muted-foreground mb-3">
           {prize.description}
         </CardDescription>
         <div className="flex items-center text-sm text-muted-foreground">

@@ -23,6 +23,9 @@ export default function HomePage() {
         
         // Always update with Firebase prizes, even if empty (to override localStorage)
         const appPrizes = firebasePrizes.map(convertFirebasePrizeToAppPrize);
+        console.log('Converted to app prizes:', appPrizes);
+        console.log('Sample imageUrl from first prize:', appPrizes[0]?.imageUrl);
+        
         dispatch({
           type: 'SET_FIREBASE_PRIZES',
           payload: appPrizes
