@@ -276,8 +276,36 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
   }
 };
 
+// Load state from localStorage if available
+const loadPersistedState = (): AuctionContextState => {
+  if (typeof window === 'undefined') return initialState;
+  
+  try {
+    const saved = localStorage.getItem('lotteryAppState');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return { ...initialState, ...parsed };
+    }
+  } catch (error) {
+    console.error('Error loading persisted state:', error);
+  }
+  
+  return initialState;
+};
+
 export const AppProvider = ({ children }: { children: ReactNode }) => {
-  const [state, dispatch] = useReducer(auctionReducer, initialState);
+  const [state, dispatch] = useReducer(auctionReducer, loadPersistedState());
+
+  // Save state to localStorage whenever it changes
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('lotteryAppState', JSON.stringify(state));
+      } catch (error) {
+        console.error('Error saving state to localStorage:', error);
+      }
+    }
+  }, [state.currentUser, state.prizes, state.winners, state.isAuctionOpen, state.allUsers]);
 
   const remainingTickets = useMemo(() => {
     if (!state.currentUser) return 0;
