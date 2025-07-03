@@ -1,0 +1,70 @@
+
+"use client";
+import Image from 'next/image';
+import type { Prize } from '@/lib/types';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import TicketAllocator from './TicketAllocator';
+import { useAppContext } from '@/context/AppContext';
+import { Trophy, Ticket } from 'lucide-react';
+
+interface PrizeCardProps {
+  prize: Prize;
+}
+
+export default function PrizeCard({ prize }: PrizeCardProps) {
+  const { state } = useAppContext();
+  const { isAuctionOpen, winners, currentUser, allUsers } = state;
+  const winnerId = winners[prize.id];
+  const winner = winnerId ? allUsers[winnerId] : null;
+  const isCurrentUserWinner = currentUser && winnerId === currentUser.id;
+
+  return (
+    <Card className="flex flex-col overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300">
+      <CardHeader className="p-0 relative">
+        <Image
+          src={prize.imageUrl || 'https://placehold.co/300x200.png'}
+          alt={prize.name}
+          width={0}
+          height={0}
+          sizes="100vw"
+          className="w-full h-auto object-contain"
+          data-ai-hint="prize item"
+        />
+        {isCurrentUserWinner && (
+           <div className="absolute top-2 right-2 bg-accent text-accent-foreground p-2 rounded-md shadow-lg">
+             <Trophy className="h-6 w-6 inline-block mr-1" />
+             <span className="font-bold">You Won!</span>
+           </div>
+        )}
+      </CardHeader>
+      <CardContent className="p-4 flex-grow">
+        <CardTitle className="text-xl font-headline mb-1">{prize.name}</CardTitle>
+        <CardDescription className="text-sm text-muted-foreground mb-3 h-20 overflow-y-auto">
+          {prize.description}
+        </CardDescription>
+        <div className="flex items-center text-sm text-muted-foreground">
+          <Ticket className="h-4 w-4 mr-1 text-primary" />
+          <span>Total Tickets Entered: </span>
+          <Badge variant="secondary" className="ml-1">{prize.totalTicketsInPrize}</Badge>
+        </div>
+      </CardContent>
+      <CardFooter className="p-4 border-t">
+        {isAuctionOpen && currentUser ? ( // Also check if currentUser exists
+          <TicketAllocator prizeId={prize.id} />
+        ) : winner ? (
+          <div className={`flex items-center p-2 rounded-md w-full ${isCurrentUserWinner ? 'bg-accent/20' : 'bg-secondary'}`}>
+            <Trophy className={`h-5 w-5 mr-2 ${isCurrentUserWinner ? 'text-accent' : 'text-primary'}`} />
+            <span className="font-semibold">Winner: {winner.name}</span>
+          </div>
+        ) : isAuctionOpen && !currentUser ? ( // If auction is open but no user logged in
+           <p className="text-sm text-muted-foreground p-2 text-center w-full">Log in to allocate tickets.</p>
+        ) : (
+          <div className="text-sm text-muted-foreground p-2 rounded-md w-full bg-secondary">
+            No winner for this prize.
+          </div>
+        )}
+      </CardFooter>
+    </Card>
+  );
+}
