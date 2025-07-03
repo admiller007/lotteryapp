@@ -4,12 +4,14 @@ import { getAuth } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  apiKey: "AIzaSyA1XMmRATBiGchdjhrbZGmOcfPH_jWNqgY",
+  authDomain: "lottery-63320.firebaseapp.com",
+  databaseURL: "https://lottery-63320-default-rtdb.firebaseio.com",
+  projectId: "lottery-63320",
+  storageBucket: "lottery-63320.firebasestorage.app",
+  messagingSenderId: "517420395756",
+  appId: "1:517420395756:web:2f44f9e96d1e5cde8b89c9",
+  measurementId: "G-FN2CY6V6WB"
 };
 
 const app = initializeApp(firebaseConfig);
