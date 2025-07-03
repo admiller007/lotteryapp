@@ -2,6 +2,7 @@
 "use client";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { Ticket, Settings, LogIn, LogOut, UserCircle, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import UserTicketInfo from './UserTicketInfo';
@@ -19,6 +20,11 @@ export default function AppHeader() {
   const { state, dispatch, isAdmin } = useAppContext();
   const { currentUser } = state;
   const router = useRouter();
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   const handleLogout = () => {
     dispatch({ type: 'LOGOUT_USER' });
@@ -33,7 +39,7 @@ export default function AppHeader() {
           <h1 className="text-2xl font-bold font-headline">TicketToss</h1>
         </Link>
         <div className="flex items-center gap-4">
-          {currentUser ? (
+          {isHydrated && currentUser ? (
             <>
               <UserTicketInfo />
               <DropdownMenu>
@@ -61,13 +67,13 @@ export default function AppHeader() {
                 </DropdownMenuContent>
               </DropdownMenu>
             </>
-          ) : (
+          ) : isHydrated ? (
             <Link href="/login" passHref>
               <Button variant="secondary">
                 <LogIn className="mr-2 h-4 w-4" /> Login
               </Button>
             </Link>
-          )}
+          ) : null}
         </div>
       </div>
     </header>
