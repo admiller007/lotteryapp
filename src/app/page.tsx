@@ -19,16 +19,28 @@ export default function HomePage() {
       setLoadingPrizes(true);
       try {
         const firebasePrizes = await getPrizes();
+        console.log('Loaded Firebase prizes:', firebasePrizes);
+        
+        // Always update with Firebase prizes, even if empty (to override localStorage)
+        const appPrizes = firebasePrizes.map(convertFirebasePrizeToAppPrize);
+        dispatch({
+          type: 'SET_FIREBASE_PRIZES',
+          payload: appPrizes
+        });
+        
         if (firebasePrizes.length > 0) {
-          const appPrizes = firebasePrizes.map(convertFirebasePrizeToAppPrize);
-          dispatch({
-            type: 'SET_FIREBASE_PRIZES',
-            payload: appPrizes
+          toast({
+            title: "Prizes Loaded",
+            description: `Loaded ${firebasePrizes.length} prizes from Firebase`
           });
         }
       } catch (error: any) {
         console.error('Error loading Firebase prizes:', error);
-        // Silently fail and use hardcoded prizes as fallback
+        toast({
+          title: "Warning",
+          description: "Could not load Firebase prizes, using cached data",
+          variant: "destructive"
+        });
       } finally {
         setLoadingPrizes(false);
       }
@@ -60,6 +72,11 @@ export default function HomePage() {
     );
   }
 
+  const clearCacheAndReload = async () => {
+    localStorage.removeItem('lotteryAppState');
+    window.location.reload();
+  };
+
   return (
     <section className="space-y-8">
       <div>
@@ -67,6 +84,16 @@ export default function HomePage() {
         <p className="text-center text-muted-foreground mb-8">
           Allocate your tickets to the prizes you want to win! You can only win one prize.
         </p>
+        {process.env.NODE_ENV === 'development' && (
+          <div className="text-center mb-4">
+            <button 
+              onClick={clearCacheAndReload}
+              className="text-xs text-blue-600 underline"
+            >
+              Clear Cache & Reload Firebase Prizes
+            </button>
+          </div>
+        )}
       </div>
       <PrizeGrid />
     </section>
