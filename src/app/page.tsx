@@ -1,14 +1,41 @@
 
 "use client";
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppContext } from '@/context/AppContext';
 import PrizeGrid from "@/components/PrizeGrid";
 import { Skeleton } from '@/components/ui/skeleton';
+import { getPrizes, convertFirebasePrizeToAppPrize } from '@/lib/firebaseService';
+import { toast } from '@/hooks/use-toast';
 
 export default function HomePage() {
-  const { state } = useAppContext();
+  const { state, dispatch } = useAppContext();
   const router = useRouter();
+  const [loadingPrizes, setLoadingPrizes] = useState(false);
+
+  // Load Firebase prizes on component mount
+  useEffect(() => {
+    const loadFirebasePrizes = async () => {
+      setLoadingPrizes(true);
+      try {
+        const firebasePrizes = await getPrizes();
+        if (firebasePrizes.length > 0) {
+          const appPrizes = firebasePrizes.map(convertFirebasePrizeToAppPrize);
+          dispatch({
+            type: 'SET_FIREBASE_PRIZES',
+            payload: appPrizes
+          });
+        }
+      } catch (error: any) {
+        console.error('Error loading Firebase prizes:', error);
+        // Silently fail and use hardcoded prizes as fallback
+      } finally {
+        setLoadingPrizes(false);
+      }
+    };
+
+    loadFirebasePrizes();
+  }, [dispatch]);
 
   useEffect(() => {
     if (state.currentUser === undefined) return; // Wait for context to initialize
