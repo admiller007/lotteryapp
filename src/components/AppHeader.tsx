@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Ticket, Settings, LogIn, LogOut, UserCircle, ShieldCheck } from 'lucide-react';
+import { Ticket, Settings, LogIn, LogOut, UserCircle, ShieldCheck, Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import UserTicketInfo from './UserTicketInfo';
 import { useAppContext } from '@/context/AppContext';
@@ -39,6 +39,14 @@ export default function AppHeader() {
           <h1 className="text-2xl font-bold font-headline">TicketToss</h1>
         </Link>
         <div className="flex items-center gap-4">
+          {isHydrated && (
+            <Link href="/winners" passHref>
+              <Button variant="ghost" className="text-primary-foreground hover:bg-primary-foreground/10">
+                <Trophy className="mr-2 h-4 w-4" />
+                Winners
+              </Button>
+            </Link>
+          )}
           {isHydrated && currentUser ? (
             <>
               <UserTicketInfo />
@@ -47,7 +55,7 @@ export default function AppHeader() {
                   <Button variant="ghost" className="flex items-center gap-2 hover:bg-primary-foreground/10 text-primary-foreground">
                     <UserCircle className="h-6 w-6" />
                     <span>{currentUser.firstName}</span>
-                    {isAdmin && <ShieldCheck className="h-5 w-5 text-accent" title="Administrator"/>}
+                    {isAdmin && <ShieldCheck className="h-5 w-5 text-accent" aria-label="Administrator"/>}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">

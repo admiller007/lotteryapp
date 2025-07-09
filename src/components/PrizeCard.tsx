@@ -19,12 +19,6 @@ export default function PrizeCard({ prize }: PrizeCardProps) {
   const winner = winnerId ? allUsers[winnerId] : null;
   const isCurrentUserWinner = currentUser && winnerId === currentUser.id;
 
-  // Debug logging
-  console.log(`PrizeCard Debug - ${prize.name}:`, {
-    prizeId: prize.id,
-    imageUrl: prize.imageUrl,
-    fullPrize: prize
-  });
 
   return (
     <Card className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300">

@@ -18,14 +18,23 @@ export default function TicketAllocator({ prizeId }: TicketAllocatorProps) {
   // Ensure currentUser is available before proceeding
   const currentAllocation = currentUser ? currentUser.allocatedTickets[prizeId] || 0 : 0;
   const [numTickets, setNumTickets] = useState(currentAllocation);
+  const [hasUserInteracted, setHasUserInteracted] = useState(false);
 
+  // Only update from external sources if user hasn't interacted yet, or if the allocation actually changed
   useEffect(() => {
-    if (currentUser) {
-      setNumTickets(currentUser.allocatedTickets[prizeId] || 0);
-    } else {
-      setNumTickets(0); // Reset if user logs out
+    if (!currentUser) {
+      setNumTickets(0);
+      setHasUserInteracted(false);
+      return;
     }
-  }, [currentUser, prizeId]);
+
+    const newAllocation = currentUser.allocatedTickets[prizeId] || 0;
+    
+    // Only update if user hasn't interacted, or if the external value actually changed
+    if (!hasUserInteracted || (hasUserInteracted && newAllocation !== numTickets && newAllocation !== 0)) {
+      setNumTickets(newAllocation);
+    }
+  }, [currentUser?.allocatedTickets, prizeId]); // Remove currentUser from deps to avoid constant re-renders
 
 
   if (!currentUser) {
@@ -54,6 +63,7 @@ export default function TicketAllocator({ prizeId }: TicketAllocatorProps) {
   const maxAffordable = currentAllocation + remainingTickets;
 
   const handleIncrement = () => {
+    setHasUserInteracted(true);
     if (numTickets < maxAffordable) {
       setNumTickets(prev => prev + 1);
     } else {
@@ -62,22 +72,41 @@ export default function TicketAllocator({ prizeId }: TicketAllocatorProps) {
   };
 
   const handleDecrement = () => {
+    setHasUserInteracted(true);
     if (numTickets > 0) {
       setNumTickets(prev => prev - 1);
     }
   };
   
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value, 10);
-    if (isNaN(value)) {
+    setHasUserInteracted(true);
+    const inputValue = e.target.value;
+    
+    // Allow empty input while typing
+    if (inputValue === '') {
         setNumTickets(0);
-    } else if (value < 0) {
+        return;
+    }
+    
+    const value = parseInt(inputValue, 10);
+    
+    if (isNaN(value) || value < 0) {
         setNumTickets(0);
     } else if (value > maxAffordable) {
         setNumTickets(maxAffordable);
         toast({ title: "Max tickets reached", description: `Cannot exceed available tickets. Max is ${maxAffordable}.`, variant: "destructive" });
     } else {
         setNumTickets(value);
+    }
+  };
+
+  const handleInputBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    // Ensure valid value on blur
+    const value = parseInt(e.target.value, 10);
+    if (isNaN(value) || value < 0) {
+      setNumTickets(0);
+    } else if (value > maxAffordable) {
+      setNumTickets(maxAffordable);
     }
   };
 
@@ -91,6 +120,7 @@ export default function TicketAllocator({ prizeId }: TicketAllocatorProps) {
           type="number"
           value={numTickets}
           onChange={handleInputChange}
+          onBlur={handleInputBlur}
           min="0"
           max={maxAffordable}
           className="text-center w-16"
