@@ -62,48 +62,25 @@ const AppContext = createContext<{
 const auctionReducer = (state: AuctionContextState, action: AuctionAction): AuctionContextState => {
   switch (action.type) {
     case 'LOGIN_USER': {
-      const { firstName, lastName, facilityName, pin } = action.payload;
-      const userName = `${firstName} ${lastName}`;
-      
-      console.log('Login attempt:', { firstName, lastName, facilityName, pin, userName });
-      console.log('Available users:', state.allUsers);
-      
-      // Find user in uploaded users with matching credentials
-      const userEntry = Object.entries(state.allUsers).find(([_, userData]) => {
-        console.log('Checking user:', userData, 'against:', { userName, facilityName, pin });
-        return userData.name === userName && 
-               userData.facilityName === facilityName && 
-               userData.pin === pin;
-      });
-      
-      console.log('User entry found:', userEntry);
-      
-      if (!userEntry) {
-          console.log('Login failed - no matching user found');
-          return {
-            ...state,
-            lastAction: { type: 'LOGIN_ERROR', message: 'Invalid credentials' },
-          };
-      }
-      
-      const [userId, existingUserData] = userEntry;
-      const ticketCount = existingUserData.tickets || 100;
-      
-      const newUser: AppUser = {
-        id: userId, 
-        firstName,
-        lastName,
-        employeeId: userId, // Using userId as employeeId for now
-        facilityName,
-        name: userName,
-        totalInitialTickets: ticketCount, 
-        allocatedTickets: state.currentUser?.id === userId ? state.currentUser.allocatedTickets : {}, 
-      };
-      
+      // This will be handled by the component now
       return {
         ...state,
-        currentUser: newUser,
+        lastAction: { type: 'LOGIN_PENDING' },
+      };
+    }
+    case 'LOGIN_SUCCESS': {
+      const { user, userName } = action.payload;
+      return {
+        ...state,
+        currentUser: user,
         lastAction: { type: 'LOGIN_SUCCESS', userName },
+      };
+    }
+    case 'LOGIN_ERROR': {
+      const { message } = action.payload;
+      return {
+        ...state,
+        lastAction: { type: 'LOGIN_ERROR', message },
       };
     }
     case 'LOGOUT_USER': {
@@ -180,6 +157,29 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         totalTicketsInPrize: updatedEntries.reduce((sum, entry) => sum + entry.numTickets, 0),
       };
 
+
+      // Save to Firebase
+      import('@/lib/firebaseService').then(async ({ allocateTickets, updatePrizeEntries }) => {
+        try {
+          // Save the allocation to Firebase
+          await allocateTickets({
+            lotteryId: 'default', // Using default lottery ID
+            prizeId,
+            userId,
+            userName,
+            tickets: count,
+            timestamp: new Date().toISOString()
+          });
+          
+          // Update the prize entries in Firebase
+          await updatePrizeEntries(prizeId, updatedEntries);
+          
+          console.log('Firebase allocation saved successfully');
+        } catch (error) {
+          console.error('Failed to save allocation to Firebase:', error);
+        }
+      });
+
       const updatedAllUsers = state.allUsers[userId] ? state.allUsers : { ...state.allUsers, [userId]: { name: userName }};
 
       return {
@@ -220,6 +220,56 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         winners: newWinners, 
         isAuctionOpen: false,
         lastAction: { type: 'WINNERS_DRAWN' },
+      };
+    }
+    case 'DRAW_SINGLE_WINNER': {
+      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state;
+
+      const { prizeId } = action.payload;
+      const prize = state.prizes.find(p => p.id === prizeId);
+      if (!prize || prize.entries.length === 0) {
+        return {
+          ...state,
+          lastAction: { type: 'NO_ENTRIES_ERROR', prizeName: prize?.name || 'Unknown Prize' },
+        };
+      }
+
+      // Check if this prize already has a winner
+      if (state.winners[prizeId]) {
+        return {
+          ...state,
+          lastAction: { type: 'ERROR', message: 'This prize already has a winner. Use redraw if needed.' },
+        };
+      }
+
+      // Create drawing pool for this prize
+      const drawingPool: string[] = [];
+      prize.entries.forEach(entry => {
+        for (let i = 0; i < entry.numTickets; i++) {
+          drawingPool.push(entry.userId);
+        }
+      });
+
+      // Filter out users who already won other prizes
+      const usersWhoWon = new Set(Object.values(state.winners));
+      const eligiblePool = drawingPool.filter(userId => !usersWhoWon.has(userId));
+
+      if (eligiblePool.length === 0) {
+        return {
+          ...state,
+          lastAction: { type: 'ERROR', message: 'No eligible participants for this prize (all may have won other prizes).' },
+        };
+      }
+
+      // Draw the winner
+      const winnerIndex = Math.floor(Math.random() * eligiblePool.length);
+      const winnerId = eligiblePool[winnerIndex];
+      const winnerName = state.allUsers[winnerId]?.name || 'Unknown User';
+
+      return {
+        ...state,
+        winners: { ...state.winners, [prizeId]: winnerId },
+        lastAction: { type: 'SINGLE_WINNER_DRAWN', winnerName, prizeName: prize.name },
       };
     }
     case 'RESET_AUCTION': {
@@ -307,6 +357,19 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         prizes: action.payload,
       };
     }
+    case 'LOAD_USER_ALLOCATIONS': {
+      if (!state.currentUser || state.currentUser.id !== action.payload.userId) {
+        return state; // Only load allocations for the current user
+      }
+      
+      return {
+        ...state,
+        currentUser: {
+          ...state.currentUser,
+          allocatedTickets: action.payload.allocatedTickets,
+        },
+      };
+    }
     case 'UPLOAD_USERS': {
       if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) {
         return {
@@ -381,6 +444,32 @@ const loadPersistedState = (): AuctionContextState => {
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [state, dispatch] = useReducer(auctionReducer, loadPersistedState());
 
+  // Load user allocations from Firebase when user logs in
+  React.useEffect(() => {
+    if (state.currentUser && state.lastAction?.type === 'LOGIN_SUCCESS') {
+      // Add a small delay to avoid race conditions with user input
+      const timer = setTimeout(() => {
+        import('@/lib/firebaseService').then(async ({ getUserAllocations }) => {
+          try {
+            const firebaseAllocations = await getUserAllocations(state.currentUser!.id);
+            console.log('Loaded user allocations from Firebase:', firebaseAllocations);
+            dispatch({
+              type: 'LOAD_USER_ALLOCATIONS',
+              payload: {
+                userId: state.currentUser!.id,
+                allocatedTickets: firebaseAllocations,
+              },
+            });
+          } catch (error) {
+            console.error('Failed to load user allocations from Firebase:', error);
+          }
+        });
+      }, 1000); // 1 second delay
+      
+      return () => clearTimeout(timer);
+    }
+  }, [state.currentUser, state.lastAction]);
+
   // Save state to localStorage whenever it changes
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -416,4 +505,54 @@ export const useAppContext = () => {
     throw new Error('useAppContext must be used within an AppProvider');
   }
   return context;
+};
+
+export const useFirebaseLogin = () => {
+  const { dispatch } = useAppContext();
+  
+  const loginWithFirebase = async (firstName: string, lastName: string, facilityName: string, pin: string) => {
+    const userName = `${firstName} ${lastName}`;
+    
+    console.log('Login attempt:', { firstName, lastName, facilityName, pin, userName });
+    
+    try {
+      const { getUserByCredentials } = await import('@/lib/firebaseService');
+      const firebaseUser = await getUserByCredentials(firstName, lastName, facilityName, pin);
+      
+      if (!firebaseUser) {
+        console.log('Login failed - no matching user found in Firebase');
+        dispatch({
+          type: 'LOGIN_ERROR',
+          payload: { message: 'Invalid credentials' }
+        });
+        return;
+      }
+      
+      console.log('Firebase user found:', firebaseUser);
+      
+      const newUser: AppUser = {
+        id: firebaseUser.id || firebaseUser.employeeId,
+        firstName: firebaseUser.firstName,
+        lastName: firebaseUser.lastName,
+        employeeId: firebaseUser.employeeId,
+        facilityName: firebaseUser.facilityName,
+        name: userName,
+        totalInitialTickets: firebaseUser.tickets,
+        allocatedTickets: {},
+      };
+      
+      dispatch({
+        type: 'LOGIN_SUCCESS',
+        payload: { user: newUser, userName }
+      });
+    } catch (error) {
+      console.error('Firebase login error:', error);
+      dispatch({
+        type: 'LOGIN_ERROR',
+        payload: { message: 'Login failed. Please try again.' }
+      });
+    }
+  };
+  
+  return { loginWithFirebase };
 };

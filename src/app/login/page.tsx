@@ -1,8 +1,8 @@
 
 "use client";
-import { useState, type FormEvent } from 'react';
+import React, { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAppContext } from '@/context/AppContext';
+import { useAppContext, useFirebaseLogin } from '@/context/AppContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,14 +11,16 @@ import { toast } from '@/hooks/use-toast';
 import { LogIn } from 'lucide-react';
 
 export default function LoginPage() {
-  const { dispatch } = useAppContext();
+  const { state } = useAppContext();
+  const { loginWithFirebase } = useFirebaseLogin();
   const router = useRouter();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [facilityName, setFacilityName] = useState('');
   const [pin, setPin] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!firstName.trim() || !lastName.trim() || !facilityName.trim() || !pin.trim()) {
       toast({
@@ -28,9 +30,24 @@ export default function LoginPage() {
       });
       return;
     }
-    dispatch({ type: 'LOGIN_USER', payload: { firstName, lastName, facilityName, pin } });
-    router.push('/'); // Redirect to home page after login
+    setIsLoading(true);
+    await loginWithFirebase(firstName, lastName, facilityName, pin);
   };
+
+  // Handle login success/error
+  React.useEffect(() => {
+    if (state.lastAction?.type === 'LOGIN_SUCCESS') {
+      setIsLoading(false);
+      router.push('/'); // Redirect to home page after successful login
+    } else if (state.lastAction?.type === 'LOGIN_ERROR') {
+      setIsLoading(false);
+      toast({
+        title: "Login Failed",
+        description: state.lastAction.message || "Invalid credentials",
+        variant: "destructive",
+      });
+    }
+  }, [state.lastAction, router]);
 
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-150px)]">
@@ -86,8 +103,8 @@ export default function LoginPage() {
             </div>
           </CardContent>
           <CardFooter>
-            <Button type="submit" className="w-full">
-              <LogIn className="mr-2 h-4 w-4" /> Log In
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              <LogIn className="mr-2 h-4 w-4" /> {isLoading ? 'Logging in...' : 'Log In'}
             </Button>
           </CardFooter>
         </form>

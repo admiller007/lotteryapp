@@ -13,6 +13,7 @@ export interface AppUser {
   firstName: string;
   lastName: string;
   employeeId: string;
+  facilityName: string;
   name: string; // Combined from firstName and lastName
   totalInitialTickets: number;
   allocatedTickets: Record<string, number>; // prizeId -> count
@@ -43,8 +44,12 @@ export type AuctionAction =
   | { type: 'RESET_AUCTION' }
   | { type: 'REDRAW_PRIZE_WINNER'; payload: { prizeId: string } }
   | { type: 'LOGIN_USER'; payload: { firstName: string; lastName: string; facilityName: string; pin: string } }
+  | { type: 'LOGIN_SUCCESS'; payload: { user: AppUser; userName: string } }
+  | { type: 'LOGIN_ERROR'; payload: { message: string } }
+  | { type: 'LOGIN_PENDING' }
   | { type: 'LOGOUT_USER' }
   | { type: 'ADD_FIREBASE_USER'; payload: { firstName: string; lastName: string; facilityName: string; tickets: number; pin: string } }
   | { type: 'SET_FIREBASE_PRIZES'; payload: Prize[] }
   | { type: 'SYNC_USER_ALLOCATIONS'; payload: { userId: string; allocatedTickets: Record<string, number> } }
+  | { type: 'LOAD_USER_ALLOCATIONS'; payload: { userId: string; allocatedTickets: Record<string, number> } }
   | { type: 'UPLOAD_USERS'; payload: Array<{ firstName: string; lastName: string; employeeId: string; facilityName: string; tickets: number; pin: string }> };

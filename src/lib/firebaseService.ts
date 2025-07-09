@@ -259,6 +259,39 @@ export const getAllAllocations = async (): Promise<FirebaseAllocation[]> => {
 };
 
 // Convert Firebase prizes to app format
+// Update prize entries and total tickets
+export const updatePrizeEntries = async (prizeId: string, entries: Array<{userId: string, numTickets: number}>): Promise<void> => {
+  try {
+    const totalTicketsInPrize = entries.reduce((sum, entry) => sum + entry.numTickets, 0);
+    const prizeRef = doc(db, 'prizes', prizeId);
+    await updateDoc(prizeRef, {
+      entries,
+      totalTicketsInPrize
+    });
+  } catch (error) {
+    console.error('Error updating prize entries:', error);
+    throw error;
+  }
+};
+
+// Get all allocations for a specific prize
+export const getPrizeAllocations = async (prizeId: string): Promise<FirebaseAllocation[]> => {
+  try {
+    const q = query(
+      collection(db, 'allocations'),
+      where('prizeId', '==', prizeId)
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as FirebaseAllocation[];
+  } catch (error) {
+    console.error('Error getting prize allocations:', error);
+    throw error;
+  }
+};
+
 export const convertFirebasePrizeToAppPrize = (firebasePrize: FirebasePrize): Prize => {
   return {
     id: firebasePrize.id || '',
