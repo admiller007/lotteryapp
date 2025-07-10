@@ -1,4 +1,12 @@
 
+export interface PrizeTier {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  order: number;
+}
+
 export interface Prize {
   id: string;
   name: string;
@@ -6,6 +14,7 @@ export interface Prize {
   imageUrl: string;
   entries: { userId: string; numTickets: number }[];
   totalTicketsInPrize: number;
+  tierId?: string;
 }
 
 export interface AppUser {
@@ -21,6 +30,7 @@ export interface AppUser {
 
 export interface AuctionContextState {
   prizes: Prize[];
+  prizeTiers: PrizeTier[];
   currentUser: AppUser | null; // Can be null if no user is logged in
   isAuctionOpen: boolean;
   winners: Record<string, string>;
@@ -41,6 +51,7 @@ export type AuctionAction =
   | { type: 'ALLOCATE_TICKETS'; payload: { prizeId: string; userId: string; userName: string; count: number } }
   | { type: 'DRAW_WINNERS' }
   | { type: 'DRAW_SINGLE_WINNER'; payload: { prizeId: string } }
+  | { type: 'DRAW_TIER_WINNERS'; payload: { tierId: string } }
   | { type: 'RESET_AUCTION' }
   | { type: 'REDRAW_PRIZE_WINNER'; payload: { prizeId: string } }
   | { type: 'LOGIN_USER'; payload: { firstName: string; lastName: string; facilityName: string; pin: string } }
@@ -50,6 +61,10 @@ export type AuctionAction =
   | { type: 'LOGOUT_USER' }
   | { type: 'ADD_FIREBASE_USER'; payload: { firstName: string; lastName: string; facilityName: string; tickets: number; pin: string } }
   | { type: 'SET_FIREBASE_PRIZES'; payload: Prize[] }
+  | { type: 'SET_FIREBASE_PRIZE_TIERS'; payload: PrizeTier[] }
+  | { type: 'ADD_PRIZE_TIER'; payload: Omit<PrizeTier, 'id'> }
+  | { type: 'UPDATE_PRIZE_TIER'; payload: PrizeTier }
+  | { type: 'DELETE_PRIZE_TIER'; payload: { tierId: string } }
   | { type: 'SYNC_USER_ALLOCATIONS'; payload: { userId: string; allocatedTickets: Record<string, number> } }
   | { type: 'LOAD_USER_ALLOCATIONS'; payload: { userId: string; allocatedTickets: Record<string, number> } }
   | { type: 'UPLOAD_USERS'; payload: Array<{ firstName: string; lastName: string; employeeId: string; facilityName: string; tickets: number; pin: string }> };

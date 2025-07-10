@@ -14,10 +14,11 @@ interface PrizeCardProps {
 
 export default function PrizeCard({ prize }: PrizeCardProps) {
   const { state } = useAppContext();
-  const { isAuctionOpen, winners, currentUser, allUsers } = state;
+  const { isAuctionOpen, winners, currentUser, allUsers, prizeTiers } = state;
   const winnerId = winners[prize.id];
   const winner = winnerId ? allUsers[winnerId] : null;
   const isCurrentUserWinner = currentUser && winnerId === currentUser.id;
+  const prizeTier = prize.tierId ? prizeTiers.find(tier => tier.id === prize.tierId) : null;
 
 
   return (
@@ -39,7 +40,22 @@ export default function PrizeCard({ prize }: PrizeCardProps) {
         )}
       </CardHeader>
       <CardContent className="p-4">
-        <CardTitle className="text-xl font-headline mb-1">{prize.name}</CardTitle>
+        <div className="flex items-center justify-between mb-2">
+          <CardTitle className="text-xl font-headline">{prize.name}</CardTitle>
+          {prizeTier && (
+            <Badge 
+              variant="outline" 
+              className="text-xs" 
+              style={{ 
+                borderColor: prizeTier.color, 
+                color: prizeTier.color,
+                backgroundColor: `${prizeTier.color}10`
+              }}
+            >
+              {prizeTier.name}
+            </Badge>
+          )}
+        </div>
         <CardDescription className="text-sm text-muted-foreground mb-3">
           {prize.description}
         </CardDescription>
