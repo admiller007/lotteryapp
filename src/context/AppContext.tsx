@@ -2,7 +2,7 @@
 "use client";
 import type { Dispatch, ReactNode } from 'react';
 import React, { createContext, useContext, useReducer, useMemo } from 'react';
-import type { Prize, AppUser, AuctionContextState, AuctionAction } from '@/lib/types';
+import type { Prize, AppUser, AuctionContextState, AuctionAction, PrizeTier } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
 
 // Define Admin Employee IDs here. In a real app, this would come from a secure config.
@@ -35,8 +35,33 @@ const initialPrizes: Prize[] = [
   },
 ];
 
+const initialPrizeTiers: PrizeTier[] = [
+  {
+    id: 'tier1',
+    name: 'Grand Prize',
+    description: 'The most valuable prizes',
+    color: '#FFD700',
+    order: 1,
+  },
+  {
+    id: 'tier2',
+    name: 'Premium',
+    description: 'High-value prizes',
+    color: '#C0C0C0',
+    order: 2,
+  },
+  {
+    id: 'tier3',
+    name: 'Standard',
+    description: 'Regular prizes',
+    color: '#CD7F32',
+    order: 3,
+  },
+];
+
 const initialState: AuctionContextState = {
   prizes: initialPrizes,
+  prizeTiers: initialPrizeTiers,
   currentUser: null, // No user logged in initially
   isAuctionOpen: true,
   winners: {},
@@ -51,12 +76,14 @@ const AppContext = createContext<{
   state: AuctionContextState;
   dispatch: Dispatch<AuctionAction>;
   remainingTickets: number;
-  isAdmin: boolean; // Added isAdmin flag
+  isAdmin: boolean;
+  isHydrated: boolean;
 }>({
   state: initialState,
   dispatch: () => null,
   remainingTickets: 0,
-  isAdmin: false, // Default to false
+  isAdmin: false,
+  isHydrated: false,
 });
 
 const auctionReducer = (state: AuctionContextState, action: AuctionAction): AuctionContextState => {
@@ -357,6 +384,90 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         prizes: action.payload,
       };
     }
+    case 'SET_FIREBASE_PRIZE_TIERS': {
+      return {
+        ...state,
+        prizeTiers: action.payload,
+      };
+    }
+    case 'ADD_PRIZE_TIER': {
+      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state;
+      const newTier: PrizeTier = {
+        ...action.payload,
+        id: `tier-${Date.now()}`,
+      };
+      return {
+        ...state,
+        prizeTiers: [...state.prizeTiers, newTier],
+      };
+    }
+    case 'UPDATE_PRIZE_TIER': {
+      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state;
+      return {
+        ...state,
+        prizeTiers: state.prizeTiers.map(tier =>
+          tier.id === action.payload.id ? action.payload : tier
+        ),
+      };
+    }
+    case 'DELETE_PRIZE_TIER': {
+      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state;
+      const { tierId } = action.payload;
+      // Remove tier assignment from all prizes in this tier
+      const updatedPrizes = state.prizes.map(prize => 
+        prize.tierId === tierId ? { ...prize, tierId: undefined } : prize
+      );
+      return {
+        ...state,
+        prizeTiers: state.prizeTiers.filter(tier => tier.id !== tierId),
+        prizes: updatedPrizes,
+      };
+    }
+    case 'DRAW_TIER_WINNERS': {
+      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state;
+      
+      const { tierId } = action.payload;
+      const tierPrizes = state.prizes.filter(prize => prize.tierId === tierId);
+      
+      if (tierPrizes.length === 0) {
+        return {
+          ...state,
+          lastAction: { type: 'ERROR', message: 'No prizes found in this tier' },
+        };
+      }
+      
+      const newWinners = { ...state.winners };
+      const usersWhoWon = new Set(Object.values(state.winners));
+      const shuffledPrizes = [...tierPrizes].sort(() => Math.random() - 0.5);
+      
+      for (const prize of shuffledPrizes) {
+        if (prize.entries.length === 0) continue;
+        if (newWinners[prize.id]) continue; // Skip if already has winner
+        
+        const drawingPool: string[] = [];
+        prize.entries.forEach(entry => {
+          for (let i = 0; i < entry.numTickets; i++) {
+            drawingPool.push(entry.userId);
+          }
+        });
+        
+        const eligiblePool = drawingPool.filter(userId => !usersWhoWon.has(userId));
+        
+        if (eligiblePool.length > 0) {
+          const winnerIndex = Math.floor(Math.random() * eligiblePool.length);
+          const winnerId = eligiblePool[winnerIndex];
+          newWinners[prize.id] = winnerId;
+          usersWhoWon.add(winnerId);
+        }
+      }
+      
+      const tier = state.prizeTiers.find(t => t.id === tierId);
+      return {
+        ...state,
+        winners: newWinners,
+        lastAction: { type: 'TIER_WINNERS_DRAWN', message: `Winners drawn for ${tier?.name || 'tier'}` },
+      };
+    }
     case 'LOAD_USER_ALLOCATIONS': {
       if (!state.currentUser || state.currentUser.id !== action.payload.userId) {
         return state; // Only load allocations for the current user
@@ -409,40 +520,95 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
 
 // Load state from localStorage if available
 const loadPersistedState = (): AuctionContextState => {
-  if (typeof window === 'undefined') return initialState;
-  
-  try {
-    const saved = localStorage.getItem('lotteryAppState');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      // Merge persisted allUsers with initial admin users to ensure admins are always available
-      const mergedUsers = {
-        ...initialState.allUsers, // Start with admin users
-        ...parsed.allUsers, // Add any persisted users from CSV uploads
-      };
-      
-      // If there's a current user in localStorage, restore them
-      let restoredCurrentUser = null;
-      if (parsed.currentUser) {
-        restoredCurrentUser = parsed.currentUser;
-      }
-      
-      return { 
-        ...initialState, 
-        ...parsed,
-        allUsers: mergedUsers,
-        currentUser: restoredCurrentUser
-      };
-    }
-  } catch (error) {
-    console.error('Error loading persisted state:', error);
-  }
-  
-  return initialState;
+  return initialState; // Always return initial state for SSR
 };
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [state, dispatch] = useReducer(auctionReducer, loadPersistedState());
+  const [isHydrated, setIsHydrated] = React.useState(false);
+
+  // Hydrate from localStorage on client side only
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('lotteryAppState');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          // Merge persisted allUsers with initial admin users
+          const mergedUsers = {
+            ...initialState.allUsers,
+            ...parsed.allUsers,
+          };
+          
+          // Restore state from localStorage
+          const restoredState = { 
+            ...initialState, 
+            ...parsed,
+            allUsers: mergedUsers,
+            currentUser: parsed.currentUser || null,
+            prizeTiers: parsed.prizeTiers || initialPrizeTiers
+          };
+          
+          // Update state with restored data
+          Object.keys(restoredState).forEach(key => {
+            if (key !== 'currentUser' && restoredState[key] !== state[key]) {
+              // Update non-user state immediately
+            }
+          });
+          
+          if (parsed.currentUser) {
+            dispatch({
+              type: 'LOGIN_SUCCESS',
+              payload: { user: parsed.currentUser, userName: parsed.currentUser.name }
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error loading persisted state:', error);
+      }
+      setIsHydrated(true);
+    }
+  }, []);
+
+  // Add demo prizes to Firebase if they don't exist
+  React.useEffect(() => {
+    if (isHydrated && state.currentUser) {
+      import('@/lib/firebaseService').then(async ({ addPrize, getPrizes }) => {
+        try {
+          const existingPrizes = await getPrizes();
+          if (existingPrizes.length === 0) {
+            // Add demo prizes to Firebase
+            await Promise.all([
+              addPrize({
+                name: 'Luxury Spa Day',
+                description: 'A full day of pampering at a top-rated spa, including massage, facial, and more.',
+                imageUrl: 'https://placehold.co/300x200.png',
+                entries: [],
+                totalTicketsInPrize: 0
+              }),
+              addPrize({
+                name: 'Weekend Getaway',
+                description: 'A two-night stay for two at a scenic countryside cabin.',
+                imageUrl: 'https://placehold.co/300x200.png',
+                entries: [],
+                totalTicketsInPrize: 0
+              }),
+              addPrize({
+                name: 'Tech Gadget Bundle',
+                description: 'Latest smartwatch, wireless earbuds, and a portable charger.',
+                imageUrl: 'https://placehold.co/300x200.png',
+                entries: [],
+                totalTicketsInPrize: 0
+              })
+            ]);
+            console.log('Demo prizes added to Firebase');
+          }
+        } catch (error) {
+          console.error('Error adding demo prizes:', error);
+        }
+      });
+    }
+  }, [isHydrated, state.currentUser]);
 
   // Load user allocations from Firebase when user logs in
   React.useEffect(() => {
@@ -479,7 +645,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         console.error('Error saving state to localStorage:', error);
       }
     }
-  }, [state.currentUser, state.prizes, state.winners, state.isAuctionOpen, state.allUsers]);
+  }, [state.currentUser, state.prizes, state.winners, state.isAuctionOpen, state.allUsers, state.prizeTiers]);
 
   const remainingTickets = useMemo(() => {
     if (!state.currentUser) return 0;
@@ -493,7 +659,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   }, [state.currentUser]);
 
   return (
-    <AppContext.Provider value={{ state, dispatch, remainingTickets, isAdmin }}>
+    <AppContext.Provider value={{ state, dispatch, remainingTickets, isAdmin, isHydrated }}>
       {children}
     </AppContext.Provider>
   );

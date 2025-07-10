@@ -13,7 +13,7 @@ import {
   getDoc
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Prize } from './types';
+import type { Prize, PrizeTier } from './types';
 
 export interface FirebaseUser {
   id?: string;
@@ -36,6 +36,16 @@ export interface FirebasePrize {
     numTickets: number;
   }>;
   totalTicketsInPrize: number;
+  tierId?: string;
+  createdAt?: Timestamp;
+}
+
+export interface FirebasePrizeTier {
+  id?: string;
+  name: string;
+  description: string;
+  color: string;
+  order: number;
   createdAt?: Timestamp;
 }
 
@@ -299,6 +309,78 @@ export const convertFirebasePrizeToAppPrize = (firebasePrize: FirebasePrize): Pr
     description: firebasePrize.description,
     imageUrl: firebasePrize.imageUrl,
     entries: firebasePrize.entries || [],
-    totalTicketsInPrize: firebasePrize.totalTicketsInPrize || 0
+    totalTicketsInPrize: firebasePrize.totalTicketsInPrize || 0,
+    tierId: firebasePrize.tierId
+  };
+};
+
+// Prize Tier Management
+export const addPrizeTier = async (tier: Omit<FirebasePrizeTier, 'id' | 'createdAt'>): Promise<string> => {
+  try {
+    const docRef = await addDoc(collection(db, 'prizeTiers'), {
+      ...tier,
+      createdAt: Timestamp.now()
+    });
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding prize tier:', error);
+    throw error;
+  }
+};
+
+export const getPrizeTiers = async (): Promise<FirebasePrizeTier[]> => {
+  try {
+    const querySnapshot = await getDocs(
+      query(collection(db, 'prizeTiers'), orderBy('order', 'asc'))
+    );
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as FirebasePrizeTier[];
+  } catch (error) {
+    console.error('Error getting prize tiers:', error);
+    throw error;
+  }
+};
+
+export const updatePrizeTier = async (id: string, updates: Partial<FirebasePrizeTier>): Promise<void> => {
+  try {
+    const tierRef = doc(db, 'prizeTiers', id);
+    await updateDoc(tierRef, updates);
+  } catch (error) {
+    console.error('Error updating prize tier:', error);
+    throw error;
+  }
+};
+
+export const deletePrizeTier = async (id: string): Promise<void> => {
+  try {
+    // First remove tier association from all prizes
+    const prizesSnapshot = await getDocs(
+      query(collection(db, 'prizes'), where('tierId', '==', id))
+    );
+    
+    const batch = writeBatch(db);
+    prizesSnapshot.docs.forEach(doc => {
+      batch.update(doc.ref, { tierId: null });
+    });
+    
+    // Delete the tier
+    batch.delete(doc(db, 'prizeTiers', id));
+    
+    await batch.commit();
+  } catch (error) {
+    console.error('Error deleting prize tier:', error);
+    throw error;
+  }
+};
+
+export const convertFirebasePrizeTierToAppTier = (firebaseTier: FirebasePrizeTier): PrizeTier => {
+  return {
+    id: firebaseTier.id || '',
+    name: firebaseTier.name,
+    description: firebaseTier.description,
+    color: firebaseTier.color,
+    order: firebaseTier.order
   };
 };

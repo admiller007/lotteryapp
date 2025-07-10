@@ -15,11 +15,13 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { addUsers, getUsers, type FirebaseUser, addPrize, getPrizes, updatePrize, deletePrize, convertFirebasePrizeToAppPrize, type FirebasePrize } from '@/lib/firebaseService';
+import FirebasePrizeManager from '@/components/FirebasePrizeManager';
+import WinnerDrawing from '@/components/WinnerDrawing';
 
 type PrizeFormData = Omit<Prize, 'id' | 'entries' | 'totalTicketsInPrize' | 'winnerId'>;
 
 export default function AdminPage() {
-  const { state, dispatch, isAdmin } = useAppContext();
+  const { state, dispatch, isAdmin, isHydrated } = useAppContext();
   const router = useRouter();
   const { prizes, isAuctionOpen, winners, allUsers, currentUser } = state;
 
@@ -140,7 +142,7 @@ export default function AdminPage() {
     }
   }, [state.lastAction]);
 
-  if (state.currentUser === undefined || !currentUser || !isAdmin) {
+  if (!isHydrated) {
     return (
        <div className="space-y-8">
         <Card>
@@ -158,6 +160,10 @@ export default function AdminPage() {
         </Card>
       </div>
     );
+  }
+
+  if (!currentUser || !isAdmin) {
+    return null; // This will trigger the useEffect redirect
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -383,14 +389,7 @@ export default function AdminPage() {
         </CardHeader>
         <CardContent className="flex gap-4">
           {isAuctionOpen ? (
-            <>
-              <Button onClick={handleDrawWinners} disabled={prizes.length === 0}>
-                <Award className="mr-2 h-4 w-4" /> Draw All Winners & Close Auction
-              </Button>
-              <p className="text-sm text-muted-foreground">
-                Or draw winners individually for specific prizes below
-              </p>
-            </>
+            <p className="text-lg font-semibold text-blue-600">Auction is open - Use the Winner Drawing section below to draw winners.</p>
           ) : (
             <p className="text-lg font-semibold text-green-600">Winners have been drawn! Auction is closed.</p>
           )}
@@ -417,191 +416,9 @@ export default function AdminPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row justify-between items-center">
-          <CardTitle className="font-headline text-2xl">Manage Prizes</CardTitle>
-          <div className="flex gap-2">
-            <Button
-              onClick={loadFirebasePrizes}
-              variant="outline"
-              size="sm"
-              disabled={loadingPrizes}
-            >
-              <RefreshCcw className={`h-4 w-4 mr-2 ${loadingPrizes ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-            <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-              <DialogTrigger asChild>
-                <Button onClick={openNewForm} disabled={!isAuctionOpen && Object.keys(winners).length > 0}>
-                  <PlusCircle className="mr-2 h-4 w-4" /> Add New Prize
-                </Button>
-              </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>{editingPrize ? 'Edit Prize' : 'Add New Prize'}</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4 py-4">
-                <div>
-                  <Label htmlFor="name">Prize Name</Label>
-                  <Input id="name" name="name" value={formData.name} onChange={handleInputChange} required />
-                </div>
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea id="description" name="description" value={formData.description} onChange={handleInputChange} required />
-                </div>
-                <div>
-                  <Label htmlFor="imageUrl">Image URL</Label>
-                  <Input id="imageUrl" name="imageUrl" value={formData.imageUrl} onChange={handleInputChange} placeholder="https://placehold.co/300x200.png" />
-                </div>
-                <DialogFooter>
-                  <DialogClose asChild>
-                    <Button type="button" variant="outline">Cancel</Button>
-                  </DialogClose>
-                  <Button type="submit">{editingPrize ? 'Save Changes' : 'Add Prize'}</Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {prizes.length === 0 ? (
-            <p>No prizes created yet. Add some!</p>
-          ) : (
-            <ul className="space-y-4">
-              {prizes.map((prize) => {
-                const currentWinnerId = winners[prize.id];
-                const winnerInfo = currentWinnerId ? allUsers[currentWinnerId] : null;
-                const canEditOrDelete = isAuctionOpen || !currentWinnerId;
+      <WinnerDrawing />
 
-                return (
-                  <li key={prize.id} className="flex flex-col sm:flex-row justify-between sm:items-center p-4 border rounded-lg gap-4">
-                    <div className="flex-grow">
-                      <h3 className="font-semibold">{prize.name}</h3>
-                      <p className="text-sm text-muted-foreground truncate max-w-md">{prize.description}</p>
-                      {/* Show winner status and controls */}
-                      <div className="mt-2">
-                        {currentWinnerId && winnerInfo ? (
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm text-green-600 font-medium">
-                              Winner: {winnerInfo.name}
-                            </p>
-                            {!isAuctionOpen && (
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button variant="outline" size="icon" className="h-7 w-7">
-                                    <RefreshCcw className="h-3 w-3" />
-                                    <span className="sr-only">Re-draw winner for {prize.name}</span>
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Re-draw winner for "{prize.name}"?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      This will select a new winner for this prize from the original entrants, excluding the current winner ({winnerInfo.name}) and any users who have already won other prizes. If no eligible new winner is found, the prize will become unwon. This action cannot be undone directly, but you can re-draw again if needed.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => handleRedrawPrize(prize.id)}>Confirm Re-draw</AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            )}
-                          </div>
-                        ) : prize.entries.length > 0 && prize.entries.some(e => e.numTickets > 0) ? (
-                          <div className="flex items-center gap-2">
-                            {isAuctionOpen ? (
-                              <>
-                                <p className="text-sm text-blue-600 font-medium">Ready to draw winner ({prize.totalTicketsInPrize} tickets entered)</p>
-                                <div className="text-xs text-muted-foreground">
-                                  {prize.entries.map(entry => `${allUsers[entry.userId]?.name || entry.userId}: ${entry.numTickets}`).join(', ')}
-                                </div>
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button variant="outline" size="sm" className="h-7">
-                                      <Play className="h-3 w-3 mr-1" />
-                                      Draw Winner
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Draw winner for "{prize.name}"?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        This will draw a winner for this specific prize from its {prize.totalTicketsInPrize} ticket entries, excluding any users who have already won other prizes. The auction will remain open for other prizes.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleDrawSingleWinner(prize.id)}>Draw Winner</AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              </>
-                            ) : (
-                              <>
-                                <p className="text-sm text-orange-500 font-medium">No winner selected (or none eligible).</p>
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button variant="outline" size="icon" className="h-7 w-7">
-                                      <Play className="h-3 w-3" />
-                                      <span className="sr-only">Draw winner for {prize.name}</span>
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Draw winner for "{prize.name}"?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        This prize currently has no winner. This will attempt to draw a winner from its entrants, excluding any existing prize winners.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleRedrawPrize(prize.id)}>Confirm Draw</AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              </>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground font-medium">No entries for this prize.</p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-2 flex-shrink-0">
-                      <Button variant="outline" size="icon" onClick={() => openEditForm(prize)} disabled={!canEditOrDelete}>
-                        <Edit3 className="h-4 w-4" />
-                        <span className="sr-only">Edit</span>
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="destructive" size="icon" disabled={!canEditOrDelete}>
-                            <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">Delete</span>
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This action cannot be undone. This will permanently delete the prize "{prize.name}". If the auction is closed and a winner has been drawn, this action is disabled.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDeletePrize(prize.id)}>Delete</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+      <FirebasePrizeManager />
 
       <Card>
         <CardHeader>
