@@ -29,6 +29,13 @@ export default function ProfilePicturePage() {
     }
   }, [state.currentUser, router]);
 
+  // Load existing profile picture when component mounts
+  React.useEffect(() => {
+    if (state.currentUser?.profilePictureUrl) {
+      setSelectedImage(state.currentUser.profilePictureUrl);
+    }
+  }, [state.currentUser]);
+
   const startCamera = useCallback(async () => {
     setCameraError(null);
     try {
@@ -193,16 +200,21 @@ export default function ProfilePicturePage() {
     return null; // Will redirect to login
   }
 
+  const isEditing = !!state.currentUser.profilePictureUrl;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="max-w-2xl mx-auto">
         <Card className="shadow-xl">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-headline">
-              Add Your Profile Picture
+              {isEditing ? 'Update Your Profile Picture' : 'Add Your Profile Picture'}
             </CardTitle>
             <CardDescription>
-              Welcome {state.currentUser.firstName}! Let's add a profile picture to personalize your account.
+              {isEditing 
+                ? `Hi ${state.currentUser.firstName}! You can update your profile picture here.`
+                : `Welcome ${state.currentUser.firstName}! Let's add a profile picture to personalize your account.`
+              }
             </CardDescription>
           </CardHeader>
           
@@ -307,7 +319,7 @@ export default function ProfilePicturePage() {
                 disabled={!selectedImage || isLoading}
                 className="flex items-center gap-2 flex-1"
               >
-                {isLoading ? 'Saving...' : 'Save & Continue'}
+                {isLoading ? 'Saving...' : (isEditing ? 'Update Picture' : 'Save & Continue')}
                 <ArrowRight className="w-4 h-4" />
               </Button>
               
@@ -316,7 +328,7 @@ export default function ProfilePicturePage() {
                 variant="ghost"
                 className="flex items-center gap-2"
               >
-                Skip for now
+                {isEditing ? 'Cancel' : 'Skip for now'}
               </Button>
             </div>
           </CardContent>
