@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Ticket, Settings, LogIn, LogOut, UserCircle, ShieldCheck, Trophy } from 'lucide-react';
+import { Ticket, Settings, LogIn, LogOut, UserCircle, ShieldCheck, Trophy, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import UserTicketInfo from './UserTicketInfo';
 import { useAppContext } from '@/context/AppContext';
 import {
@@ -53,7 +54,12 @@ export default function AppHeader() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="flex items-center gap-2 hover:bg-primary-foreground/10 text-primary-foreground">
-                    <UserCircle className="h-6 w-6" />
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={currentUser.profilePictureUrl || ''} />
+                      <AvatarFallback className="bg-primary-foreground text-primary">
+                        <UserCircle className="h-6 w-6" />
+                      </AvatarFallback>
+                    </Avatar>
                     <span>{currentUser.firstName}</span>
                     {isAdmin && <ShieldCheck className="h-5 w-5 text-accent" aria-label="Administrator"/>}
                   </Button>
@@ -61,13 +67,20 @@ export default function AppHeader() {
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>My Account {isAdmin && "(Admin)"}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => router.push('/profile-picture')}>
+                    <Camera className="mr-2 h-4 w-4" />
+                    <span>Profile Picture</span>
+                  </DropdownMenuItem>
                   {isAdmin && (
-                    <DropdownMenuItem onSelect={() => router.push('/admin')}>
-                      <Settings className="mr-2 h-4 w-4" />
-                      <span>Admin Panel</span>
-                    </DropdownMenuItem>
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => router.push('/admin')}>
+                        <Settings className="mr-2 h-4 w-4" />
+                        <span>Admin Panel</span>
+                      </DropdownMenuItem>
+                    </>
                   )}
-                  {isAdmin && <DropdownMenuSeparator />}
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem onSelect={handleLogout} className="text-red-500 focus:text-red-500 focus:bg-red-500/10">
                     <LogOut className="mr-2 h-4 w-4" />
                     <span>Logout</span>
