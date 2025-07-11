@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAppContext } from '@/context/AppContext';
 import PrizeGrid from "@/components/PrizeGrid";
 import { Skeleton } from '@/components/ui/skeleton';
-import { getPrizes, convertFirebasePrizeToAppPrize } from '@/lib/firebaseService';
+import { getPrizes, convertFirebasePrizeToAppPrize, getPrizeTiers, convertFirebasePrizeTierToAppTier } from '@/lib/firebaseService';
 import { toast } from '@/hooks/use-toast';
 
 export default function HomePage() {
@@ -13,15 +13,21 @@ export default function HomePage() {
   const router = useRouter();
   const [loadingPrizes, setLoadingPrizes] = useState(false);
 
-  // Load Firebase prizes on component mount
+  // Load Firebase prizes and prize tiers on component mount
   useEffect(() => {
-    const loadFirebasePrizes = async () => {
+    const loadFirebaseData = async () => {
       setLoadingPrizes(true);
       try {
-        const firebasePrizes = await getPrizes();
-        console.log('Loaded Firebase prizes:', firebasePrizes);
+        // Load prizes and prize tiers in parallel
+        const [firebasePrizes, firebasePrizeTiers] = await Promise.all([
+          getPrizes(),
+          getPrizeTiers()
+        ]);
         
-        // Always update with Firebase prizes, even if empty (to override localStorage)
+        console.log('Loaded Firebase prizes:', firebasePrizes);
+        console.log('Loaded Firebase prize tiers:', firebasePrizeTiers);
+        
+        // Convert and update prizes
         const appPrizes = firebasePrizes.map(convertFirebasePrizeToAppPrize);
         console.log('Converted to app prizes:', appPrizes);
         console.log('Sample imageUrl from first prize:', appPrizes[0]?.imageUrl);
@@ -31,17 +37,26 @@ export default function HomePage() {
           payload: appPrizes
         });
         
-        if (firebasePrizes.length > 0) {
+        // Convert and update prize tiers
+        const appPrizeTiers = firebasePrizeTiers.map(convertFirebasePrizeTierToAppTier);
+        console.log('Converted to app prize tiers:', appPrizeTiers);
+        
+        dispatch({
+          type: 'SET_FIREBASE_PRIZE_TIERS',
+          payload: appPrizeTiers
+        });
+        
+        if (firebasePrizes.length > 0 || firebasePrizeTiers.length > 0) {
           toast({
-            title: "Prizes Loaded",
-            description: `Loaded ${firebasePrizes.length} prizes from Firebase`
+            title: "Data Loaded",
+            description: `Loaded ${firebasePrizes.length} prizes and ${firebasePrizeTiers.length} prize tiers from Firebase`
           });
         }
       } catch (error: any) {
-        console.error('Error loading Firebase prizes:', error);
+        console.error('Error loading Firebase data:', error);
         toast({
           title: "Warning",
-          description: "Could not load Firebase prizes, using cached data",
+          description: "Could not load Firebase data, using cached data",
           variant: "destructive"
         });
       } finally {
@@ -49,7 +64,7 @@ export default function HomePage() {
       }
     };
 
-    loadFirebasePrizes();
+    loadFirebaseData();
   }, [dispatch]);
 
   useEffect(() => {

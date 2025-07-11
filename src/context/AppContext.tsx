@@ -570,14 +570,43 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  // Add demo prizes to Firebase if they don't exist
+  // Add demo prizes and prize tiers to Firebase if they don't exist
   React.useEffect(() => {
     if (isHydrated && state.currentUser) {
-      import('@/lib/firebaseService').then(async ({ addPrize, getPrizes }) => {
+      import('@/lib/firebaseService').then(async ({ addPrize, getPrizes, addPrizeTier, getPrizeTiers }) => {
         try {
-          const existingPrizes = await getPrizes();
+          const [existingPrizes, existingPrizeTiers] = await Promise.all([
+            getPrizes(),
+            getPrizeTiers()
+          ]);
+          
+          // Add demo prize tiers if they don't exist
+          if (existingPrizeTiers.length === 0) {
+            await Promise.all([
+              addPrizeTier({
+                name: 'Grand Prize',
+                description: 'The most valuable prizes',
+                color: '#FFD700',
+                order: 1,
+              }),
+              addPrizeTier({
+                name: 'Premium',
+                description: 'High-value prizes',
+                color: '#C0C0C0',
+                order: 2,
+              }),
+              addPrizeTier({
+                name: 'Standard',
+                description: 'Regular prizes',
+                color: '#CD7F32',
+                order: 3,
+              })
+            ]);
+            console.log('Demo prize tiers added to Firebase');
+          }
+          
+          // Add demo prizes if they don't exist
           if (existingPrizes.length === 0) {
-            // Add demo prizes to Firebase
             await Promise.all([
               addPrize({
                 name: 'Luxury Spa Day',
@@ -604,7 +633,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             console.log('Demo prizes added to Firebase');
           }
         } catch (error) {
-          console.error('Error adding demo prizes:', error);
+          console.error('Error adding demo prizes and tiers:', error);
         }
       });
     }
