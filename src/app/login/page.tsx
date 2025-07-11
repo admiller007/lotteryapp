@@ -39,7 +39,12 @@ export default function LoginPage() {
   React.useEffect(() => {
     if (state.lastAction?.type === 'LOGIN_SUCCESS') {
       setIsLoading(false);
-      router.push('/'); // Redirect to home page after successful login
+      // Check if user has a profile picture, if not redirect to profile picture page
+      if (state.currentUser && !state.currentUser.profilePictureUrl) {
+        router.push('/profile-picture');
+      } else {
+        router.push('/'); // Redirect to home page if user already has profile picture
+      }
     } else if (state.lastAction?.type === 'LOGIN_ERROR') {
       setIsLoading(false);
       toast({
@@ -48,7 +53,7 @@ export default function LoginPage() {
         variant: "destructive",
       });
     }
-  }, [state.lastAction, router]);
+  }, [state.lastAction, state.currentUser, router]);
 
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-150px)]">

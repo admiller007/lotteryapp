@@ -513,6 +513,20 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         lastAction: { type: 'USERS_UPLOADED', message: `Successfully uploaded ${action.payload.length} users` },
       };
     }
+    case 'UPDATE_PROFILE_PICTURE': {
+      const { userId, profilePictureUrl } = action.payload;
+      if (!state.currentUser || state.currentUser.id !== userId) {
+        return state;
+      }
+      
+      return {
+        ...state,
+        currentUser: {
+          ...state.currentUser,
+          profilePictureUrl,
+        },
+      };
+    }
     default:
       return state;
   }
@@ -526,6 +540,7 @@ const loadPersistedState = (): AuctionContextState => {
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [state, dispatch] = useReducer(auctionReducer, loadPersistedState());
   const [isHydrated, setIsHydrated] = React.useState(false);
+  const [allocationsLoaded, setAllocationsLoaded] = React.useState<string | null>(null);
 
   // Hydrate from localStorage on client side only
   React.useEffect(() => {
@@ -641,7 +656,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   // Load user allocations from Firebase when user logs in
   React.useEffect(() => {
-    if (state.currentUser && state.lastAction?.type === 'LOGIN_SUCCESS') {
+    if (state.currentUser && state.lastAction?.type === 'LOGIN_SUCCESS' && allocationsLoaded !== state.currentUser.id) {
       // Add a small delay to avoid race conditions with user input
       const timer = setTimeout(() => {
         import('@/lib/firebaseService').then(async ({ getUserAllocations }) => {
@@ -655,6 +670,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                 allocatedTickets: firebaseAllocations,
               },
             });
+            setAllocationsLoaded(state.currentUser!.id);
           } catch (error) {
             console.error('Failed to load user allocations from Firebase:', error);
           }
@@ -663,7 +679,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       
       return () => clearTimeout(timer);
     }
-  }, [state.currentUser, state.lastAction]);
+  }, [state.currentUser, state.lastAction, allocationsLoaded]);
+
+  // Reset allocations loaded flag when user logs out
+  React.useEffect(() => {
+    if (!state.currentUser) {
+      setAllocationsLoaded(null);
+    }
+  }, [state.currentUser]);
 
   // Save state to localStorage whenever it changes
   React.useEffect(() => {
@@ -734,6 +757,7 @@ export const useFirebaseLogin = () => {
         name: userName,
         totalInitialTickets: firebaseUser.tickets,
         allocatedTickets: {},
+        profilePictureUrl: firebaseUser.profilePictureUrl,
       };
       
       dispatch({

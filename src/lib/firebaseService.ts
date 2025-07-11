@@ -12,7 +12,13 @@ import {
   Timestamp,
   getDoc
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { 
+  ref, 
+  uploadBytes, 
+  getDownloadURL,
+  deleteObject 
+} from 'firebase/storage';
+import { db, storage } from './firebase';
 import type { Prize, PrizeTier } from './types';
 
 export interface FirebaseUser {
@@ -23,6 +29,7 @@ export interface FirebaseUser {
   facilityName: string;
   tickets: number;
   pin: string;
+  profilePictureUrl?: string;
   createdAt?: Timestamp;
 }
 
@@ -383,4 +390,105 @@ export const convertFirebasePrizeTierToAppTier = (firebaseTier: FirebasePrizeTie
     color: firebaseTier.color,
     order: firebaseTier.order
   };
+};
+
+// Profile Picture Management
+export const uploadProfilePicture = async (userId: string, file: File): Promise<string> => {
+  try {
+    // Convert file to data URL and compress
+    const dataURL = await fileToDataURL(file);
+    const compressedDataURL = await compressImage(dataURL, 0.8, 800, 800);
+    
+    // For now, return the compressed data URL directly
+    // This avoids Firebase Storage CORS issues
+    return compressedDataURL;
+  } catch (error) {
+    console.error('Error processing profile picture file:', error);
+    throw error;
+  }
+};
+
+// Helper function to convert file to data URL
+const fileToDataURL = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target?.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
+export const uploadProfilePictureFromDataURL = async (userId: string, dataURL: string): Promise<string> => {
+  try {
+    // For now, we'll store the base64 data URL directly in Firestore
+    // This avoids Firebase Storage CORS issues
+    // In production, you'd want to set up proper Firebase Storage rules
+    
+    // Compress the image if it's too large
+    const compressedDataURL = await compressImage(dataURL, 0.8, 800, 800);
+    
+    // Store the compressed data URL directly
+    // This is a temporary solution - in production use Firebase Storage with proper auth
+    return compressedDataURL;
+  } catch (error) {
+    console.error('Error processing profile picture from data URL:', error);
+    throw error;
+  }
+};
+
+// Helper function to compress image
+const compressImage = async (dataURL: string, quality: number = 0.8, maxWidth: number = 800, maxHeight: number = 800): Promise<string> => {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    
+    img.onload = () => {
+      // Calculate new dimensions
+      let { width, height } = img;
+      
+      if (width > maxWidth || height > maxHeight) {
+        const ratio = Math.min(maxWidth / width, maxHeight / height);
+        width *= ratio;
+        height *= ratio;
+      }
+      
+      // Set canvas size
+      canvas.width = width;
+      canvas.height = height;
+      
+      // Draw and compress
+      ctx?.drawImage(img, 0, 0, width, height);
+      const compressedDataURL = canvas.toDataURL('image/jpeg', quality);
+      
+      resolve(compressedDataURL);
+    };
+    
+    img.src = dataURL;
+  });
+};
+
+export const updateUserProfilePicture = async (userId: string, profilePictureUrl: string): Promise<void> => {
+  try {
+    const userRef = doc(db, 'users', userId);
+    await updateDoc(userRef, {
+      profilePictureUrl
+    });
+  } catch (error) {
+    console.error('Error updating user profile picture:', error);
+    throw error;
+  }
+};
+
+export const deleteProfilePicture = async (profilePictureUrl: string): Promise<void> => {
+  try {
+    if (profilePictureUrl && profilePictureUrl.includes('firebase')) {
+      // Extract the path from the URL and delete the file
+      const storageRef = ref(storage, profilePictureUrl);
+      await deleteObject(storageRef);
+    }
+  } catch (error) {
+    console.error('Error deleting profile picture:', error);
+    // Don't throw here as this is cleanup - we don't want to fail the main operation
+  }
 };

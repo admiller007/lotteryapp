@@ -26,6 +26,7 @@ export interface AppUser {
   name: string; // Combined from firstName and lastName
   totalInitialTickets: number;
   allocatedTickets: Record<string, number>; // prizeId -> count
+  profilePictureUrl?: string; // Optional profile picture URL
 }
 
 export interface AuctionContextState {
@@ -67,4 +68,5 @@ export type AuctionAction =
   | { type: 'DELETE_PRIZE_TIER'; payload: { tierId: string } }
   | { type: 'SYNC_USER_ALLOCATIONS'; payload: { userId: string; allocatedTickets: Record<string, number> } }
   | { type: 'LOAD_USER_ALLOCATIONS'; payload: { userId: string; allocatedTickets: Record<string, number> } }
-  | { type: 'UPLOAD_USERS'; payload: Array<{ firstName: string; lastName: string; employeeId: string; facilityName: string; tickets: number; pin: string }> };
+  | { type: 'UPLOAD_USERS'; payload: Array<{ firstName: string; lastName: string; employeeId: string; facilityName: string; tickets: number; pin: string }> }
+  | { type: 'UPDATE_PROFILE_PICTURE'; payload: { userId: string; profilePictureUrl: string } };
