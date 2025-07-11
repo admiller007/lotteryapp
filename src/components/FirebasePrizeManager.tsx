@@ -428,11 +428,11 @@ export default function FirebasePrizeManager() {
                     return (
                       <Card key={prize.id} className="relative">
                         <CardContent className="p-4">
-                          <div className="aspect-video mb-3 bg-gray-100 rounded-md overflow-hidden">
+                          <div className="mb-3 bg-gray-100 rounded-md overflow-hidden">
                             <img
                               src={prize.imageUrl}
                               alt={prize.name}
-                              className="w-full h-full object-cover"
+                              className="w-full h-auto object-contain max-h-48"
                               onError={(e) => {
                                 (e.target as HTMLImageElement).src = 'https://placehold.co/300x200.png';
                               }}
