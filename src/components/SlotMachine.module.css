@@ -1,0 +1,115 @@
+@import url('https://fonts.googleapis.com/css?family=Cairo');
+
+/* Slot Machine Icons */
+.slot-spinner {
+  display: inline-block;
+  width: 120px;
+  height: 180px;
+  overflow: hidden;
+  background: #f8f9fa;
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+  position: relative;
+  will-change: transform;
+  transition: 0.3s background-position ease-in-out;
+  transform: translateZ(0);
+}
+
+.slot-icons {
+  width: 100%;
+  will-change: transform;
+  transition: 0.3s transform ease-in-out;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.slot-icon {
+  font-size: 40px;
+  line-height: 60px;
+  height: 60px;
+  text-align: center;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-pic {
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  object-fit: cover;
+}
+
+.slot-spinner:nth-child(2) {
+  margin: 0 10px;
+}
+
+.slot-machine-container {
+  overflow: hidden;
+  padding: 2rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.spinner-container {
+  overflow: hidden;
+  height: 200px;
+  transform: scale(1);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+.spinner-container.winner {
+  animation: winner-celebration 1s ease-in-out;
+}
+
+/* Removed the horizontal line overlay */
+
+.gradient-fade {
+  position: absolute;
+  top: 32px;
+  right: 32px;
+  bottom: 32px;
+  left: 32px;
+  background: linear-gradient(
+    to bottom,
+    rgba(64,64,64,1) 0%,
+    rgba(64,64,64,0) 7%,
+    rgba(64,64,64,0) 93%,
+    rgba(64,64,64,1) 100%
+  );
+  pointer-events: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes winner-celebration {
+  0% {
+    transform: scale(0.4);
+  }
+  50% {
+    transform: scale(0.45);
+  }
+  100% {
+    transform: scale(0.4);
+  }
+}
+
+@media screen and (max-width: 768px) {
+  .spinner-container {
+    transform: scale(0.3);
+  }
+  
+  .slot-machine-container {
+    padding: 1rem;
+  }
+}
