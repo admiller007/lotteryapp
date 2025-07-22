@@ -100,7 +100,7 @@ export default function HomePage() {
       <div>
         <h2 className="text-3xl font-bold font-headline text-center mb-2">Available Prizes</h2>
         <p className="text-center text-muted-foreground mb-8">
-          Allocate your tickets to the prizes you want to win! You can only win one prize.
+          Allocate your tickets to the prizes you want to win! Some tiers may allow multiple wins across tiers.
         </p>
         {process.env.NODE_ENV === 'development' && (
           <div className="text-center mb-4">

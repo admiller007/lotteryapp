@@ -112,7 +112,7 @@ export default function WinnerDrawing() {
               Draw All Winners
             </h3>
             <p className="text-sm text-muted-foreground">
-              Draw winners for all prizes at once. Each person can only win one prize.
+              Draw winners for all prizes at once. Eligibility depends on tier settings.
             </p>
             <Dialog open={isDrawAllDialogOpen} onOpenChange={setIsDrawAllDialogOpen}>
               <DialogTrigger asChild>
@@ -134,7 +134,7 @@ export default function WinnerDrawing() {
                     The auction will be closed after drawing.
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Each person can only win one prize. Winners are drawn randomly based on ticket allocations.
+                    Winners are drawn randomly based on ticket allocations. Tier settings may allow multiple wins across tiers.
                   </p>
                   <div className="flex gap-2">
                     <Button onClick={handleDrawAllWinners} className="flex-1">

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Trash2, Edit, Plus, RefreshCw, Trophy, Target } from 'lucide-react';
@@ -45,7 +46,8 @@ export default function FirebasePrizeManager() {
     name: '',
     description: '',
     color: '#3b82f6',
-    order: 0
+    order: 0,
+    allowMultipleWinsAcrossTiers: false
   });
   
   const { dispatch } = useAppContext();
@@ -169,7 +171,8 @@ export default function FirebasePrizeManager() {
           name: tierFormData.name,
           description: tierFormData.description,
           color: tierFormData.color,
-          order: tierFormData.order
+          order: tierFormData.order,
+          allowMultipleWinsAcrossTiers: tierFormData.allowMultipleWinsAcrossTiers
         });
         toast({
           title: "Success",
@@ -181,7 +184,8 @@ export default function FirebasePrizeManager() {
           name: tierFormData.name,
           description: tierFormData.description,
           color: tierFormData.color,
-          order: tierFormData.order
+          order: tierFormData.order,
+          allowMultipleWinsAcrossTiers: tierFormData.allowMultipleWinsAcrossTiers
         });
         toast({
           title: "Success",
@@ -192,7 +196,7 @@ export default function FirebasePrizeManager() {
       await loadTiers();
       setIsTierDialogOpen(false);
       setEditingTier(null);
-      setTierFormData({ name: '', description: '', color: '#3b82f6', order: 0 });
+      setTierFormData({ name: '', description: '', color: '#3b82f6', order: 0, allowMultipleWinsAcrossTiers: false });
       
     } catch (error: any) {
       console.error('Error saving tier:', error);
@@ -275,18 +279,20 @@ export default function FirebasePrizeManager() {
       name: tier.name,
       description: tier.description,
       color: tier.color,
-      order: tier.order
+      order: tier.order,
+      allowMultipleWinsAcrossTiers: tier.allowMultipleWinsAcrossTiers || false
     });
     setIsTierDialogOpen(true);
   };
 
   const openAddTierDialog = () => {
     setEditingTier(null);
-    setTierFormData({ 
-      name: '', 
-      description: '', 
-      color: '#3b82f6', 
-      order: tiers.length 
+    setTierFormData({
+      name: '',
+      description: '',
+      color: '#3b82f6',
+      order: tiers.length,
+      allowMultipleWinsAcrossTiers: false
     });
     setIsTierDialogOpen(true);
   };
@@ -540,6 +546,17 @@ export default function FirebasePrizeManager() {
                           required
                           placeholder="Enter sort order"
                         />
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="allowMulti"
+                          checked={tierFormData.allowMultipleWinsAcrossTiers}
+                          onCheckedChange={(checked) =>
+                            setTierFormData(prev => ({ ...prev, allowMultipleWinsAcrossTiers: !!checked }))
+                          }
+                        />
+                        <Label htmlFor="allowMulti">Allow cross-tier wins</Label>
                       </div>
                       
                       <div className="flex gap-2 pt-4">

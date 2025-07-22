@@ -42,6 +42,7 @@ const initialPrizeTiers: PrizeTier[] = [
     description: 'The most valuable prizes',
     color: '#FFD700',
     order: 1,
+    allowMultipleWinsAcrossTiers: false,
   },
   {
     id: 'tier2',
@@ -49,6 +50,7 @@ const initialPrizeTiers: PrizeTier[] = [
     description: 'High-value prizes',
     color: '#C0C0C0',
     order: 2,
+    allowMultipleWinsAcrossTiers: false,
   },
   {
     id: 'tier3',
@@ -56,6 +58,7 @@ const initialPrizeTiers: PrizeTier[] = [
     description: 'Regular prizes',
     color: '#CD7F32',
     order: 3,
+    allowMultipleWinsAcrossTiers: true,
   },
 ];
 
@@ -220,11 +223,15 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId) || !state.isAuctionOpen) return state;
 
       const newWinners: Record<string, string> = {};
-      const usersWhoWon = new Set<string>();
+      const globalWinners = new Set<string>();
+      const winnersByTier: Record<string, Set<string>> = {};
       const shuffledPrizes = [...state.prizes].sort(() => Math.random() - 0.5);
 
       for (const prize of shuffledPrizes) {
         if (prize.entries.length === 0) continue;
+
+        const tierId = prize.tierId || 'no-tier';
+        const tier = state.prizeTiers.find(t => t.id === tierId);
 
         const drawingPool: string[] = [];
         prize.entries.forEach(entry => {
@@ -232,14 +239,23 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
             drawingPool.push(entry.userId);
           }
         });
-        
-        const eligiblePool = drawingPool.filter(userId => !usersWhoWon.has(userId));
 
+        const tierWinners = winnersByTier[tierId] || new Set<string>();
+        const eligiblePool = (tier?.allowMultipleWinsAcrossTiers
+          ? drawingPool.filter(userId => !tierWinners.has(userId))
+          : drawingPool.filter(userId => !globalWinners.has(userId))
+        );
         if (eligiblePool.length > 0) {
           const winnerIndex = Math.floor(Math.random() * eligiblePool.length);
           const winnerId = eligiblePool[winnerIndex];
           newWinners[prize.id] = winnerId;
-          usersWhoWon.add(winnerId);
+          if (!winnersByTier[tierId]) {
+            winnersByTier[tierId] = new Set<string>();
+          }
+          winnersByTier[tierId].add(winnerId);
+          if (!tier?.allowMultipleWinsAcrossTiers) {
+            globalWinners.add(winnerId);
+          }
         }
       }
       return { 
@@ -269,6 +285,9 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         };
       }
 
+      const tierId = prize.tierId || 'no-tier';
+      const tier = state.prizeTiers.find(t => t.id === tierId);
+
       // Create drawing pool for this prize
       const drawingPool: string[] = [];
       prize.entries.forEach(entry => {
@@ -277,9 +296,24 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         }
       });
 
-      // Filter out users who already won other prizes
-      const usersWhoWon = new Set(Object.values(state.winners));
-      const eligiblePool = drawingPool.filter(userId => !usersWhoWon.has(userId));
+      const winnersByTier: Record<string, Set<string>> = {};
+      const restrictiveWinners = new Set<string>();
+      Object.entries(state.winners).forEach(([pID, winnerUserID]) => {
+        const p = state.prizes.find(pr => pr.id === pID);
+        if (!p) return;
+        const tId = p.tierId || 'no-tier';
+        if (!winnersByTier[tId]) winnersByTier[tId] = new Set<string>();
+        winnersByTier[tId].add(winnerUserID);
+        const t = state.prizeTiers.find(tp => tp.id === tId);
+        if (!t?.allowMultipleWinsAcrossTiers) {
+          restrictiveWinners.add(winnerUserID);
+        }
+      });
+
+      const tierWinners = winnersByTier[tierId] || new Set<string>();
+      const eligiblePool = tier?.allowMultipleWinsAcrossTiers
+        ? drawingPool.filter(userId => !tierWinners.has(userId))
+        : drawingPool.filter(userId => !restrictiveWinners.has(userId));
 
       if (eligiblePool.length === 0) {
         return {
@@ -332,16 +366,35 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       }
 
       const originalWinnerId = state.winners[prizeId];
-      const fixedOtherWinners = new Set<string>();
+      const tierId = prize.tierId || 'no-tier';
+      const tier = state.prizeTiers.find(t => t.id === tierId);
+
+      const winnersByTier: Record<string, Set<string>> = {};
+      const restrictiveWinners = new Set<string>();
       Object.entries(state.winners).forEach(([pID, winnerUserID]) => {
-        if (pID !== prizeId && winnerUserID) {
-          fixedOtherWinners.add(winnerUserID);
+        if (pID === prizeId) return;
+        const p = state.prizes.find(pr => pr.id === pID);
+        if (!p) return;
+        const tId = p.tierId || 'no-tier';
+        if (!winnersByTier[tId]) winnersByTier[tId] = new Set<string>();
+        winnersByTier[tId].add(winnerUserID);
+        const t = state.prizeTiers.find(tp => tp.id === tId);
+        if (!t?.allowMultipleWinsAcrossTiers) {
+          restrictiveWinners.add(winnerUserID);
         }
       });
-      
+
+      const ineligibleSet = tier?.allowMultipleWinsAcrossTiers
+        ? winnersByTier[tierId] || new Set<string>()
+        : restrictiveWinners;
+
       const eligibleUsersForRedraw = new Set<string>();
       prize.entries.forEach(entry => {
-        if (entry.numTickets > 0 && entry.userId !== originalWinnerId && !fixedOtherWinners.has(entry.userId)) {
+        if (
+          entry.numTickets > 0 &&
+          entry.userId !== originalWinnerId &&
+          !ineligibleSet.has(entry.userId)
+        ) {
           eligibleUsersForRedraw.add(entry.userId);
         }
       });
@@ -437,7 +490,20 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       }
       
       const newWinners = { ...state.winners };
-      const usersWhoWon = new Set(Object.values(state.winners));
+      const restrictiveWinners = new Set<string>();
+      const winnersByTier: Record<string, Set<string>> = {};
+      Object.entries(state.winners).forEach(([pID, winnerUserID]) => {
+        const p = state.prizes.find(pr => pr.id === pID);
+        if (!p) return;
+        const tId = p.tierId || 'no-tier';
+        if (!winnersByTier[tId]) winnersByTier[tId] = new Set<string>();
+        winnersByTier[tId].add(winnerUserID);
+        const t = state.prizeTiers.find(tp => tp.id === tId);
+        if (!t?.allowMultipleWinsAcrossTiers) {
+          restrictiveWinners.add(winnerUserID);
+        }
+      });
+      const tier = state.prizeTiers.find(t => t.id === tierId);
       const shuffledPrizes = [...tierPrizes].sort(() => Math.random() - 0.5);
       
       for (const prize of shuffledPrizes) {
@@ -451,17 +517,25 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
           }
         });
         
-        const eligiblePool = drawingPool.filter(userId => !usersWhoWon.has(userId));
+        const tierWinners = winnersByTier[tierId] || new Set<string>();
+        const eligiblePool = tier?.allowMultipleWinsAcrossTiers
+          ? drawingPool.filter(userId => !tierWinners.has(userId))
+          : drawingPool.filter(userId => !restrictiveWinners.has(userId));
         
         if (eligiblePool.length > 0) {
           const winnerIndex = Math.floor(Math.random() * eligiblePool.length);
           const winnerId = eligiblePool[winnerIndex];
           newWinners[prize.id] = winnerId;
-          usersWhoWon.add(winnerId);
+          if (!winnersByTier[tierId]) {
+            winnersByTier[tierId] = new Set<string>();
+          }
+          winnersByTier[tierId].add(winnerId);
+          if (!tier?.allowMultipleWinsAcrossTiers) {
+            restrictiveWinners.add(winnerId);
+          }
         }
       }
-      
-      const tier = state.prizeTiers.find(t => t.id === tierId);
+
       return {
         ...state,
         winners: newWinners,
@@ -566,7 +640,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           
           // Update state with restored data
           Object.keys(restoredState).forEach(key => {
-            if (key !== 'currentUser' && restoredState[key] !== state[key]) {
+            if (
+              key !== 'currentUser' &&
+              restoredState[key as keyof AuctionContextState] !==
+                state[key as keyof AuctionContextState]
+            ) {
               // Update non-user state immediately
             }
           });

@@ -53,6 +53,7 @@ export interface FirebasePrizeTier {
   description: string;
   color: string;
   order: number;
+  allowMultipleWinsAcrossTiers?: boolean;
   createdAt?: Timestamp;
 }
 
@@ -388,7 +389,8 @@ export const convertFirebasePrizeTierToAppTier = (firebaseTier: FirebasePrizeTie
     name: firebaseTier.name,
     description: firebaseTier.description,
     color: firebaseTier.color,
-    order: firebaseTier.order
+    order: firebaseTier.order,
+    allowMultipleWinsAcrossTiers: firebaseTier.allowMultipleWinsAcrossTiers
   };
 };
 
