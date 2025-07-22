@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Trophy, Shuffle, Target, Users, Gift } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { toast } from '@/hooks/use-toast';
+import SlotMachine from '@/components/SlotMachine';
 
 export default function WinnerDrawing() {
   const { state, dispatch, isAdmin } = useAppContext();
@@ -16,6 +17,12 @@ export default function WinnerDrawing() {
   const [selectedTier, setSelectedTier] = useState<string>('');
   const [selectedPrize, setSelectedPrize] = useState<string>('');
   const [isDrawAllDialogOpen, setIsDrawAllDialogOpen] = useState(false);
+  const [showSlotMachine, setShowSlotMachine] = useState(false);
+  const [currentDrawnWinner, setCurrentDrawnWinner] = useState<{
+    winnerName: string;
+    prizeName: string;
+    winnerProfilePicture?: string;
+  } | null>(null);
 
   if (!isAdmin) {
     return (
@@ -69,16 +76,34 @@ export default function WinnerDrawing() {
       return;
     }
 
-    dispatch({ 
-      type: 'DRAW_SINGLE_WINNER', 
-      payload: { prizeId: selectedPrize } 
-    });
-    
     const prize = prizes.find(p => p.id === selectedPrize);
-    toast({
-      title: "Winner Drawn!",
-      description: `Winner has been drawn for ${prize?.name || 'selected prize'}.`
-    });
+    
+    // Show slot machine first, then dispatch
+    if (prize) {
+      setCurrentDrawnWinner({
+        winnerName: 'Drawing...',
+        prizeName: prize.name,
+        winnerProfilePicture: undefined
+      });
+      setShowSlotMachine(true);
+      
+      // Dispatch after a small delay to show slot machine first
+      setTimeout(() => {
+        dispatch({ 
+          type: 'DRAW_SINGLE_WINNER', 
+          payload: { prizeId: selectedPrize } 
+        });
+      }, 100);
+    } else {
+      dispatch({ 
+        type: 'DRAW_SINGLE_WINNER', 
+        payload: { prizeId: selectedPrize } 
+      });
+      toast({
+        title: "Winner Drawn!",
+        description: `Winner has been drawn for ${prize?.name || 'selected prize'}.`
+      });
+    }
     setSelectedPrize('');
   };
 
@@ -87,7 +112,53 @@ export default function WinnerDrawing() {
       type: 'REDRAW_PRIZE_WINNER', 
       payload: { prizeId } 
     });
+    
+    const prize = prizes.find(p => p.id === prizeId);
+    const winnerId = state.winners[prizeId];
+    const winner = winnerId ? state.allUsers[winnerId] : null;
+    
+    if (winner && prize) {
+      setCurrentDrawnWinner({
+        winnerName: winner.name,
+        prizeName: prize.name,
+        winnerProfilePicture: winner.profilePictureUrl
+      });
+      setShowSlotMachine(true);
+    }
   };
+
+  const handleSlotMachineComplete = () => {
+    setShowSlotMachine(false);
+    setCurrentDrawnWinner(null);
+    if (currentDrawnWinner) {
+      toast({
+        title: "Winner Announced!",
+        description: `${currentDrawnWinner.winnerName} wins ${currentDrawnWinner.prizeName}!`
+      });
+    }
+  };
+
+  // Watch for winner updates and update slot machine display
+  useEffect(() => {
+    if (showSlotMachine && currentDrawnWinner && currentDrawnWinner.winnerName === 'Drawing...') {
+      // Find the prize we're drawing for
+      const prizesInProgress = Object.keys(state.winners);
+      for (const prizeId of prizesInProgress) {
+        const winnerId = state.winners[prizeId];
+        const winner = state.allUsers[winnerId];
+        const prize = prizes.find(p => p.id === prizeId);
+        
+        if (winner && prize && prize.name === currentDrawnWinner.prizeName) {
+          setCurrentDrawnWinner({
+            winnerName: winner.name,
+            prizeName: prize.name,
+            winnerProfilePicture: winner.profilePictureUrl
+          });
+          break;
+        }
+      }
+    }
+  }, [state.winners, showSlotMachine, currentDrawnWinner, prizes, state.allUsers]);
 
   const prizesWithEntries = prizes.filter(p => p.entries.length > 0);
   const prizesWithWinners = prizes.filter(p => winners[p.id]);
@@ -97,6 +168,19 @@ export default function WinnerDrawing() {
 
   return (
     <div className="space-y-6">
+      {showSlotMachine && currentDrawnWinner && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <SlotMachine
+            winnerName={currentDrawnWinner.winnerName}
+            prizeName={currentDrawnWinner.prizeName}
+            winnerProfilePicture={currentDrawnWinner.winnerProfilePicture}
+            allUsers={Object.values(state.allUsers)}
+            onComplete={handleSlotMachineComplete}
+            autoStart={true}
+          />
+        </div>
+      )}
+      
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
