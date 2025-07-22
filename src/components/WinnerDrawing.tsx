@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Shuffle, Target, Users, Gift } from 'lucide-react';
+import { Trophy, Shuffle, Target, Users, Gift, Zap } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { toast } from '@/hooks/use-toast';
 import SlotMachine from '@/components/SlotMachine';
@@ -136,6 +136,118 @@ export default function WinnerDrawing() {
         description: `${currentDrawnWinner.winnerName} wins ${currentDrawnWinner.prizeName}!`
       });
     }
+  };
+
+  const handleRandomlyAllocateTickets = async () => {
+    console.log('Current allUsers state:', state.allUsers);
+    console.log('All user entries:', Object.entries(state.allUsers));
+
+    // First try to load users from Firebase if local state is empty
+    if (Object.keys(state.allUsers).length <= 2) { // Only admin users
+      try {
+        const { getUsers } = await import('@/lib/firebaseService');
+        const firebaseUsers = await getUsers();
+        console.log('Loaded Firebase users:', firebaseUsers);
+        
+        if (firebaseUsers.length > 0) {
+          dispatch({
+            type: 'UPLOAD_USERS',
+            payload: firebaseUsers.map(user => ({
+              firstName: user.firstName,
+              lastName: user.lastName,
+              employeeId: user.employeeId,
+              facilityName: user.facilityName,
+              tickets: user.tickets,
+              pin: user.pin
+            }))
+          });
+          
+          toast({
+            title: "Users Loaded",
+            description: `Loaded ${firebaseUsers.length} users from Firebase. Try again.`,
+          });
+          return;
+        }
+      } catch (error) {
+        console.error('Error loading Firebase users:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load users from Firebase.",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+
+    // Get all non-admin users
+    const nonAdminUsers = Object.entries(state.allUsers).filter(([userId, user]) => {
+      // Exclude admin users (assuming admin users have 'ADMIN' in their ID or name)
+      return !userId.includes('ADMIN') && !user.name?.includes('ADMIN');
+    });
+
+    console.log('Non-admin users found:', nonAdminUsers);
+
+    if (nonAdminUsers.length === 0) {
+      toast({
+        title: "No Users Found",
+        description: "No non-admin users found to allocate tickets. Try loading users first.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (prizes.length === 0) {
+      toast({
+        title: "No Prizes Found", 
+        description: "No prizes available for ticket allocation.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // For each user, randomly distribute their tickets across prizes
+    nonAdminUsers.forEach(([userId, user]) => {
+      const totalTickets = user.tickets || 10; // Default to 10 if not specified
+      let remainingTickets = totalTickets;
+      
+      // Randomly select how many prizes this user will enter
+      const maxPrizes = Math.min(prizes.length, Math.ceil(Math.random() * 3) + 1); // 1-4 prizes max
+      const selectedPrizes = prizes
+        .sort(() => Math.random() - 0.5) // Shuffle
+        .slice(0, maxPrizes);
+
+      selectedPrizes.forEach((prize, index) => {
+        if (remainingTickets <= 0) return;
+        
+        // For the last prize, use all remaining tickets
+        // For others, use 1-50% of remaining tickets
+        let ticketsForThisPrize;
+        if (index === selectedPrizes.length - 1) {
+          ticketsForThisPrize = remainingTickets;
+        } else {
+          const maxForThis = Math.floor(remainingTickets * 0.5);
+          ticketsForThisPrize = Math.max(1, Math.floor(Math.random() * maxForThis) + 1);
+        }
+        
+        // Allocate tickets to this prize
+        dispatch({
+          type: 'ALLOCATE_TICKETS',
+          payload: {
+            prizeId: prize.id,
+            userId: userId,
+            userName: user.name || 'Unknown',
+            count: ticketsForThisPrize
+          }
+        });
+        
+        remainingTickets -= ticketsForThisPrize;
+      });
+    });
+
+    toast({
+      title: "Tickets Allocated!",
+      description: `Randomly allocated tickets for ${nonAdminUsers.length} users across ${prizes.length} prizes.`
+    });
   };
 
   // Watch for winner updates and update slot machine display
@@ -397,6 +509,24 @@ export default function WinnerDrawing() {
                 <Badge variant="outline">{tiersWithPrizes.length}</Badge>
               </div>
             </div>
+          </div>
+          {/* Random Ticket Allocation (Testing) */}
+          <div className="space-y-3">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <Zap className="h-4 w-4" />
+              Testing Helper
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Randomly allocate tickets from all non-admin users across all prizes for testing.
+            </p>
+            <Button 
+              onClick={handleRandomlyAllocateTickets}
+              variant="outline"
+              className="w-full"
+            >
+              <Zap className="h-4 w-4 mr-2" />
+              Randomly Allocate All Tickets
+            </Button>
           </div>
         </CardContent>
       </Card>

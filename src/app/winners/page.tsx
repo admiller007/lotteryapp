@@ -4,10 +4,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Trophy, Gift, Users, Calendar } from 'lucide-react';
 import Image from 'next/image';
+import { useState, useEffect, useRef } from 'react';
+import SlotMachine from '@/components/SlotMachine';
 
 export default function WinnersPage() {
   const { state } = useAppContext();
   const { prizes, winners, allUsers, isAuctionOpen } = state;
+  const [showSlotMachine, setShowSlotMachine] = useState(false);
+  const [currentWinner, setCurrentWinner] = useState<{
+    winnerName: string;
+    prizeName: string;
+    winnerProfilePicture?: string;
+  } | null>(null);
+  const [displayedWinners, setDisplayedWinners] = useState<Set<string>>(new Set());
+  const previousWinnersRef = useRef<Record<string, string>>({});
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // Get prizes that have winners
   const prizesWithWinners = prizes.filter(prize => winners[prize.id]);
@@ -19,8 +30,81 @@ export default function WinnersPage() {
     return { prize, winner, winnerId };
   }).filter(item => item.prize && item.winner);
 
-  // Show "lottery in progress" only if auction is open AND no winners have been drawn yet
-  if (isAuctionOpen && allWinners.length === 0) {
+  // Watch for new winners and show slot machine
+  useEffect(() => {
+    const currentWinners = { ...winners };
+    const previousWinners = previousWinnersRef.current;
+
+    console.log('Winners page - checking for new winners:', { 
+      currentWinners, 
+      previousWinners,
+      allUsersKeys: Object.keys(allUsers),
+      prizesCount: prizes.length,
+      prizeIds: prizes.map(p => p.id),
+      userIds: Object.keys(allUsers),
+      isInitialLoad,
+      displayedWinnersSize: displayedWinners.size
+    });
+
+    // Skip slot machine on initial load - mark existing winners as displayed
+    if (isInitialLoad && Object.keys(currentWinners).length > 0) {
+      console.log('Initial load - marking existing winners as displayed:', Object.keys(currentWinners));
+      setDisplayedWinners(new Set(Object.keys(currentWinners)));
+      previousWinnersRef.current = currentWinners;
+      setIsInitialLoad(false);
+      return;
+    }
+
+    // Find newly drawn winners (only after initial load)
+    if (!isInitialLoad) {
+      for (const [prizeId, winnerId] of Object.entries(currentWinners)) {
+        if (!previousWinners[prizeId] && winnerId && !displayedWinners.has(prizeId)) {
+          const prize = prizes.find(p => p.id === prizeId);
+          const winner = allUsers[winnerId];
+          
+          console.log('New winner detected:', { 
+            prizeId, 
+            winnerId, 
+            prize: prize?.name, 
+            winner: winner?.name,
+            allUserIds: Object.keys(allUsers)
+          });
+          
+          if (prize && winner) {
+            console.log('Showing slot machine for:', winner.name, 'winning', prize.name);
+            setCurrentWinner({
+              winnerName: winner.name,
+              prizeName: prize.name,
+              winnerProfilePicture: winner.profilePictureUrl
+            });
+            setShowSlotMachine(true);
+            break; // Show one winner at a time
+          }
+        }
+      }
+    }
+
+    previousWinnersRef.current = currentWinners;
+  }, [winners, prizes, allUsers, displayedWinners, isInitialLoad]);
+
+  const handleSlotMachineComplete = () => {
+    setShowSlotMachine(false);
+    if (currentWinner) {
+      // Add this winner to displayed set
+      const prizeId = Object.entries(winners).find(([_, winnerId]) => {
+        const winner = allUsers[winnerId];
+        return winner?.name === currentWinner.winnerName;
+      })?.[0];
+      
+      if (prizeId) {
+        setDisplayedWinners(prev => new Set(prev.add(prizeId)));
+      }
+    }
+    setCurrentWinner(null);
+  };
+
+  // Show "lottery in progress" only if auction is open AND no winners have been drawn yet AND not showing slot machine
+  if (isAuctionOpen && allWinners.length === 0 && !showSlotMachine) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="text-center space-y-6">
@@ -59,6 +143,41 @@ export default function WinnersPage() {
             </Card>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // If showing slot machine, show it with a backdrop
+  if (showSlotMachine && currentWinner) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <SlotMachine
+            winnerName={currentWinner.winnerName}
+            prizeName={currentWinner.prizeName}
+            winnerProfilePicture={currentWinner.winnerProfilePicture}
+            allUsers={Object.values(allUsers)}
+            onComplete={handleSlotMachineComplete}
+            autoStart={true}
+          />
+        </div>
+        
+        {/* Show background content if there are already some winners */}
+        {allWinners.length > 0 && (
+          <div className="opacity-30 pointer-events-none">
+            <div className="text-center mb-12">
+              <div className="flex justify-center mb-6">
+                <div className="p-6 bg-accent/20 rounded-full">
+                  <Trophy className="h-16 w-16 text-accent" />
+                </div>
+              </div>
+              <h1 className="text-4xl font-bold font-headline mb-4">🎉 Congratulations to Our Winners! 🎉</h1>
+              <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+                Drawing in progress... More winners being announced!
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
