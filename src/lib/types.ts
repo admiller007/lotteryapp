@@ -5,6 +5,12 @@ export interface PrizeTier {
   description: string;
   color: string;
   order: number;
+  /**
+   * If true, a user who has already won a prize from a different tier
+   * can still win a prize from this tier. A user may still only win one
+   * prize per tier.
+   */
+  allowMultipleWinsAcrossTiers?: boolean;
 }
 
 export interface Prize {
