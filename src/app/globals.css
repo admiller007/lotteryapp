@@ -4,40 +4,46 @@
 
 @layer base {
   :root {
-    --background: 220 29% 95%; /* Light Gray #F0F2F5 */
-    --foreground: 220 10% 25%; /* Darker Gray for text */
+    --background: 246 100% 97%; /* Soft cream white #FEFBF3 */
+    --foreground: 225 15% 15%; /* Deep charcoal #1F2937 */
 
-    --card: 0 0% 100%; /* White cards */
-    --card-foreground: 220 10% 25%;
+    --card: 0 0% 100%; /* Pure white cards */
+    --card-foreground: 225 15% 15%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 10% 25%;
+    --popover-foreground: 225 15% 15%;
 
-    --primary: 231 48% 48%; /* Rich Blue #3F51B5 */
-    --primary-foreground: 0 0% 98%; /* White text on primary */
+    --primary: 220 100% 54%; /* Vibrant lottery blue #1E88E5 */
+    --primary-foreground: 0 0% 100%; /* Pure white text */
 
-    --secondary: 220 15% 88%; /* A slightly darker gray for secondary elements */
-    --secondary-foreground: 220 10% 20%;
+    --secondary: 39 100% 93%; /* Light gold background #FEF3C7 */
+    --secondary-foreground: 45 100% 25%; /* Dark gold text #B45309 */
 
-    --muted: 220 15% 88%;
-    --muted-foreground: 220 10% 45%; /* Muted text */
+    --muted: 210 20% 92%; /* Light blue-gray #EFF6FF */
+    --muted-foreground: 215 20% 45%; /* Muted blue-gray text */
 
-    --accent: 34 100% 62%; /* Yellow-Orange #FFAB40 */
-    --accent-foreground: 0 0% 10%; /* Dark text on accent */
+    --accent: 45 100% 51%; /* Bright gold #FFB000 */
+    --accent-foreground: 45 100% 10%; /* Very dark gold text */
 
-    --destructive: 0 84.2% 60.2%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 220 15% 80%; /* Border color */
-    --input: 220 15% 90%; /* Input background */
-    --ring: 231 48% 48%; /* Ring color (focus) to match primary */
+    --border: 210 20% 85%; /* Light blue-gray border */
+    --input: 210 20% 95%; /* Very light input background */
+    --ring: 220 100% 54%; /* Focus ring matches primary */
 
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
+    --success: 142 76% 36%; /* Winning green #16A34A */
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%; /* Attention orange #F59E0B */
+    --warning-foreground: 0 0% 100%;
+
+    --chart-1: 45 100% 51%; /* Gold */
+    --chart-2: 220 100% 54%; /* Blue */
+    --chart-3: 142 76% 36%; /* Green */
+    --chart-4: 271 100% 71%; /* Purple*/
+    --chart-5: 0 84% 60%; /* Red */
+    --radius: 0.75rem;
 
     /* Sidebar variables, can be adjusted if sidebar is used extensively or keep as is */
     --sidebar-background: 0 0% 98%;
@@ -51,39 +57,45 @@
   }
 
   .dark {
-    --background: 220 10% 10%; 
-    --foreground: 220 20% 95%; 
+    --background: 225 25% 8%; /* Deep navy #0F1419 */
+    --foreground: 210 20% 95%; /* Light cream text */
 
-    --card: 220 10% 15%;
-    --card-foreground: 220 20% 95%;
+    --card: 225 20% 12%; /* Dark blue cards */
+    --card-foreground: 210 20% 95%;
 
-    --popover: 220 10% 15%;
-    --popover-foreground: 220 20% 95%;
+    --popover: 225 20% 12%;
+    --popover-foreground: 210 20% 95%;
 
-    --primary: 231 48% 58%; 
-    --primary-foreground: 0 0% 10%;
+    --primary: 220 100% 65%; /* Bright lottery blue */
+    --primary-foreground: 225 25% 8%;
 
-    --secondary: 220 10% 25%;
-    --secondary-foreground: 220 20% 90%;
+    --secondary: 45 50% 20%; /* Dark gold background */
+    --secondary-foreground: 45 100% 80%; /* Light gold text */
 
-    --muted: 220 10% 25%;
-    --muted-foreground: 220 10% 60%;
+    --muted: 225 15% 18%; /* Dark blue-gray */
+    --muted-foreground: 215 15% 65%; /* Light blue-gray text */
 
-    --accent: 34 100% 68%; 
-    --accent-foreground: 0 0% 10%;
+    --accent: 45 100% 60%; /* Bright gold for dark mode */
+    --accent-foreground: 225 25% 8%;
 
     --destructive: 0 70% 50%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 220 10% 30%;
-    --input: 220 10% 20%;
-    --ring: 231 48% 58%;
+    --border: 225 15% 25%; /* Dark border */
+    --input: 225 15% 15%; /* Dark input background */
+    --ring: 220 100% 65%;
+
+    --success: 142 76% 45%; /* Brighter green for dark mode */
+    --success-foreground: 225 25% 8%;
+
+    --warning: 38 92% 60%; /* Brighter orange for dark mode */
+    --warning-foreground: 225 25% 8%;
     
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --chart-1: 45 100% 60%; /* Gold */
+    --chart-2: 220 100% 65%; /* Blue */
+    --chart-3: 142 76% 45%; /* Green */
+    --chart-4: 271 100% 75%; /* Purple */
+    --chart-5: 0 84% 65%; /* Red */
 
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;

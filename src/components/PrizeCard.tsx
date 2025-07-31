@@ -33,7 +33,7 @@ export default function PrizeCard({ prize }: PrizeCardProps) {
           data-ai-hint="prize item"
         />
         {isCurrentUserWinner && (
-           <div className="absolute top-2 right-2 bg-accent text-accent-foreground p-2 rounded-md shadow-lg">
+           <div className="absolute top-2 right-2 bg-success text-success-foreground p-2 rounded-md shadow-lg">
              <Trophy className="h-6 w-6 inline-block mr-1" />
              <span className="font-bold">You Won!</span>
            </div>
@@ -69,8 +69,8 @@ export default function PrizeCard({ prize }: PrizeCardProps) {
         {isAuctionOpen && currentUser ? ( // Also check if currentUser exists
           <TicketAllocator prizeId={prize.id} />
         ) : winner ? (
-          <div className={`flex items-center p-2 rounded-md w-full ${isCurrentUserWinner ? 'bg-accent/20' : 'bg-secondary'}`}>
-            <Trophy className={`h-5 w-5 mr-2 ${isCurrentUserWinner ? 'text-accent' : 'text-primary'}`} />
+          <div className={`flex items-center p-2 rounded-md w-full ${isCurrentUserWinner ? 'bg-success/20' : 'bg-secondary'}`}>
+            <Trophy className={`h-5 w-5 mr-2 ${isCurrentUserWinner ? 'text-success' : 'text-primary'}`} />
             <span className="font-semibold">Winner: {winner.name}</span>
           </div>
         ) : isAuctionOpen && !currentUser ? ( // If auction is open but no user logged in

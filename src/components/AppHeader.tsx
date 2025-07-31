@@ -61,7 +61,7 @@ export default function AppHeader() {
                       </AvatarFallback>
                     </Avatar>
                     <span>{currentUser.firstName}</span>
-                    {isAdmin && <ShieldCheck className="h-5 w-5 text-accent" aria-label="Administrator"/>}
+                    {isAdmin && <ShieldCheck className="h-5 w-5 text-warning" aria-label="Administrator"/>}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
