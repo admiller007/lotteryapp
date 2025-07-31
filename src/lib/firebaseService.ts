@@ -436,6 +436,50 @@ export const uploadProfilePictureFromDataURL = async (userId: string, dataURL: s
   }
 };
 
+// Save winner to Firebase
+export const saveWinner = async (prizeId: string, winnerId: string): Promise<void> => {
+  try {
+    await addDoc(collection(db, 'winners'), {
+      prizeId,
+      winnerId,
+      timestamp: Timestamp.now()
+    });
+    console.log('Winner saved to Firebase:', { prizeId, winnerId });
+  } catch (error) {
+    console.error('Error saving winner to Firebase:', error);
+    throw error;
+  }
+};
+
+// Save multiple winners to Firebase
+export const saveWinners = async (winners: Record<string, string>): Promise<void> => {
+  try {
+    const batch = writeBatch(db);
+    
+    // Clear existing winners first
+    const existingWinners = await getDocs(collection(db, 'winners'));
+    existingWinners.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+    
+    // Add new winners
+    Object.entries(winners).forEach(([prizeId, winnerId]) => {
+      const docRef = doc(collection(db, 'winners'));
+      batch.set(docRef, {
+        prizeId,
+        winnerId,
+        timestamp: Timestamp.now()
+      });
+    });
+    
+    await batch.commit();
+    console.log('Winners saved to Firebase:', winners);
+  } catch (error) {
+    console.error('Error saving winners to Firebase:', error);
+    throw error;
+  }
+};
+
 // Helper function to compress image
 const compressImage = async (dataURL: string, quality: number = 0.8, maxWidth: number = 800, maxHeight: number = 800): Promise<string> => {
   return new Promise((resolve) => {

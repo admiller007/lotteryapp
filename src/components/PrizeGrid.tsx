@@ -23,9 +23,9 @@ export default function PrizeGrid() {
   return (
     <div>
       {!isAuctionOpen && Object.keys(winners).length > 0 && (
-        <Alert className="mb-6 bg-accent/10 border-accent text-accent-foreground">
-          <Info className="h-4 w-4 text-accent" />
-          <AlertTitle className="font-headline text-accent">Auction Closed & Winners Announced!</AlertTitle>
+        <Alert className="mb-6 bg-success/10 border-success text-success-foreground">
+          <Info className="h-4 w-4 text-success" />
+          <AlertTitle className="font-headline text-success">Auction Closed & Winners Announced!</AlertTitle>
           <AlertDescription>
             Congratulations to the winners! Check below to see who won each prize.
           </AlertDescription>

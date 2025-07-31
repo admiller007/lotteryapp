@@ -1,7 +1,7 @@
 
 "use client";
 import type { Dispatch, ReactNode } from 'react';
-import React, { createContext, useContext, useReducer, useMemo } from 'react';
+import React, { createContext, useContext, useReducer, useMemo, useEffect } from 'react';
 import type { Prize, AppUser, AuctionContextState, AuctionAction, PrizeTier } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
 
@@ -293,6 +293,15 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       const winnerId = eligiblePool[winnerIndex];
       const winnerName = state.allUsers[winnerId]?.name || 'Unknown User';
 
+      // Save winner to Firebase
+      import('@/lib/firebaseService').then(async ({ saveWinner }) => {
+        try {
+          await saveWinner(prizeId, winnerId);
+        } catch (error) {
+          console.error('Failed to save winner to Firebase:', error);
+        }
+      });
+
       return {
         ...state,
         winners: { ...state.winners, [prizeId]: winnerId },
@@ -301,6 +310,17 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
     }
     case 'RESET_AUCTION': {
       if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state; 
+      
+      // Clear winners from Firebase
+      import('@/lib/firebaseService').then(async ({ saveWinners }) => {
+        try {
+          await saveWinners({}); // Empty winners object
+          console.log('Winners cleared from Firebase');
+        } catch (error) {
+          console.error('Failed to clear winners from Firebase:', error);
+        }
+      });
+      
       const resetCurrentUser = state.currentUser ? {
         ...state.currentUser,
         allocatedTickets: {},
@@ -308,6 +328,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
 
       return {
         ...initialState, 
+        winners: {}, // Explicitly clear winners
         currentUser: resetCurrentUser, 
         allUsers: resetCurrentUser ? { [resetCurrentUser.id]: { name: resetCurrentUser.name } } : {}, 
         prizes: state.prizes.map(p => ({ ...p, entries: [], totalTicketsInPrize: 0 })), 
@@ -375,6 +396,15 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       const updatedWinners = { ...state.winners, [prizeId]: newWinnerId };
       const newWinnerName = state.allUsers[newWinnerId]?.name || 'Unknown User';
       toast({ title: "Winner Re-drawn!", description: `${newWinnerName} is the new winner of ${prize.name}.` });
+
+      // Save winner to Firebase
+      import('@/lib/firebaseService').then(async ({ saveWinner }) => {
+        try {
+          await saveWinner(prizeId, newWinnerId);
+        } catch (error) {
+          console.error('Failed to save redrawn winner to Firebase:', error);
+        }
+      });
 
       return { ...state, winners: updatedWinners };
     }
@@ -527,6 +557,12 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         },
       };
     }
+    case 'SYNC_WINNERS_FROM_FIREBASE': {
+      return {
+        ...state,
+        winners: action.payload,
+      };
+    }
     default:
       return state;
   }
@@ -555,10 +591,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             ...parsed.allUsers,
           };
           
-          // Restore state from localStorage
+          // Restore state from localStorage but exclude winners (they come from Firebase)
           const restoredState = { 
             ...initialState, 
             ...parsed,
+            winners: {}, // Always start with empty winners - Firebase will populate
             allUsers: mergedUsers,
             currentUser: parsed.currentUser || null,
             prizeTiers: parsed.prizeTiers || initialPrizeTiers
@@ -698,6 +735,102 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
     }
   }, [state.currentUser, state.prizes, state.winners, state.isAuctionOpen, state.allUsers, state.prizeTiers]);
+
+  // Load Firebase data on mount and set up real-time listeners
+  React.useEffect(() => {
+    let winnersUnsubscribe: (() => void) | null = null;
+    
+    const setupFirebaseData = async () => {
+      try {
+        // Load Firebase prizes and users first
+        const { getPrizes, getUsers, getPrizeTiers } = await import('@/lib/firebaseService');
+        const { collection, onSnapshot } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase');
+        
+        // Load Firebase data
+        const [firebasePrizes, firebaseUsers, firebaseTiers] = await Promise.all([
+          getPrizes(),
+          getUsers(), 
+          getPrizeTiers()
+        ]);
+        
+        // Convert and set Firebase prizes
+        if (firebasePrizes.length > 0) {
+          const { convertFirebasePrizeToAppPrize } = await import('@/lib/firebaseService');
+          const convertedPrizes = firebasePrizes.map(convertFirebasePrizeToAppPrize);
+          dispatch({ type: 'SET_FIREBASE_PRIZES', payload: convertedPrizes });
+        }
+        
+        // Set Firebase prize tiers
+        if (firebaseTiers.length > 0) {
+          dispatch({ type: 'SET_FIREBASE_PRIZE_TIERS', payload: firebaseTiers });
+        }
+        
+        // Set Firebase users
+        if (firebaseUsers.length > 0) {
+          const usersObject = firebaseUsers.reduce((acc, user) => {
+            const userId = user.id || user.employeeId;
+            acc[userId] = {
+              name: `${user.firstName} ${user.lastName}`,
+              tickets: user.tickets,
+              facilityName: user.facilityName,
+              pin: user.pin
+            };
+            return acc;
+          }, {} as Record<string, any>);
+          
+          dispatch({
+            type: 'UPLOAD_USERS',
+            payload: firebaseUsers.map(user => ({
+              firstName: user.firstName,
+              lastName: user.lastName,
+              employeeId: user.employeeId,
+              facilityName: user.facilityName,
+              tickets: user.tickets,
+              pin: user.pin
+            }))
+          });
+        }
+        
+        // Now set up winners listener
+        winnersUnsubscribe = onSnapshot(collection(db, 'winners'), (snapshot) => {
+          const winnersData: Record<string, string> = {};
+          
+          snapshot.forEach((doc) => {
+            const data = doc.data();
+            if (data.prizeId && data.winnerId) {
+              winnersData[data.prizeId] = data.winnerId;
+            }
+          });
+          
+          // Only dispatch if the winners data has actually changed
+          const currentWinnersString = JSON.stringify(state.winners);
+          const newWinnersString = JSON.stringify(winnersData);
+          
+          if (currentWinnersString !== newWinnersString) {
+            console.log('Winners updated from Firebase:', winnersData);
+            dispatch({
+              type: 'SYNC_WINNERS_FROM_FIREBASE',
+              payload: winnersData
+            });
+          }
+        }, (error) => {
+          console.error('Error listening to winners collection:', error);
+        });
+      } catch (error) {
+        console.error('Error setting up Firebase data:', error);
+      }
+    };
+
+    setupFirebaseData();
+
+    // Cleanup listener on unmount
+    return () => {
+      if (winnersUnsubscribe) {
+        winnersUnsubscribe();
+      }
+    };
+  }, []); // Empty dependency array to run once on mount
 
   const remainingTickets = useMemo(() => {
     if (!state.currentUser) return 0;
