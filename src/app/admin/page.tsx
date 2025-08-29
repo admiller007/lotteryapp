@@ -10,13 +10,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { PlusCircle, Edit3, Trash2, Play, RefreshCcw, Award, ShieldAlert, Upload, Users } from 'lucide-react';
+import { PlusCircle, Edit3, Trash2, Play, RefreshCcw, Award, ShieldAlert, Upload, Users, Gift, Layers, Ticket, Trophy } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { addUsers, getUsers, type FirebaseUser, addPrize, getPrizes, updatePrize, deletePrize, convertFirebasePrizeToAppPrize, type FirebasePrize } from '@/lib/firebaseService';
 import FirebasePrizeManager from '@/components/FirebasePrizeManager';
 import WinnerDrawing from '@/components/WinnerDrawing';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 
 type PrizeFormData = Omit<Prize, 'id' | 'entries' | 'totalTicketsInPrize' | 'winnerId'>;
 
@@ -36,6 +38,9 @@ export default function AdminPage() {
   // CSV Upload state
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [previewUsers, setPreviewUsers] = useState<any[]>([]);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [userSearch, setUserSearch] = useState("");
   
   // Firebase users state
   const [firebaseUsers, setFirebaseUsers] = useState<FirebaseUser[]>([]);
@@ -263,12 +268,27 @@ export default function AdminPage() {
   };
 
   // CSV Upload handlers
-  const handleCsvFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCsvFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && file.type === 'text/csv') {
-      setCsvFile(file);
-    } else {
+    setPreviewUsers([]);
+    setPreviewError(null);
+    if (!file) return;
+
+    if (file.type !== 'text/csv') {
       toast({ title: "Invalid File", description: "Please select a valid CSV file.", variant: "destructive" });
+      return;
+    }
+    setCsvFile(file);
+    try {
+      const text = await file.text();
+      const users = parseCSV(text);
+      if (users.length === 0) {
+        setPreviewError('No valid users found in CSV file');
+      }
+      setPreviewUsers(users);
+    } catch (err: any) {
+      console.error('CSV parse error:', err);
+      setPreviewError(err.message || 'Failed to parse CSV');
     }
   };
 
@@ -326,199 +346,327 @@ export default function AdminPage() {
   };
 
   const handleCsvUpload = async () => {
-    if (!csvFile) return;
-    
+    if (previewUsers.length === 0) {
+      toast({ title: "Nothing to Upload", description: "Please select a valid CSV and review preview.", variant: "destructive" });
+      return;
+    }
+
     setUploading(true);
-    
     try {
-      const text = await csvFile.text();
-      const users = parseCSV(text);
-      
-      if (users.length === 0) {
-        throw new Error('No valid users found in CSV file');
-      }
-      
-      // Convert to Firebase user format
-      const firebaseUsers: Omit<FirebaseUser, 'id' | 'createdAt'>[] = users.map(user => ({
+      const firebaseUsersPayload: Omit<FirebaseUser, 'id' | 'createdAt'>[] = previewUsers.map((user) => ({
         firstName: user.firstName,
         lastName: user.lastName,
         employeeId: user.employeeId,
         facilityName: user.facilityName,
         tickets: user.tickets,
-        pin: user.pin
+        pin: user.pin,
       }));
-      
-      // Upload users to Firebase
-      await addUsers(firebaseUsers);
-      
-      // Reload Firebase users to update the display
+
+      await addUsers(firebaseUsersPayload);
       await loadFirebaseUsers();
-      
-      // Also update local context for immediate login capability
-      dispatch({
-        type: 'UPLOAD_USERS',
-        payload: users
-      });
-      
-      toast({ 
-        title: "Users Uploaded", 
-        description: `Successfully uploaded ${users.length} users to Firebase.` 
-      });
-      
+      dispatch({ type: 'UPLOAD_USERS', payload: previewUsers });
+      toast({ title: "Users Uploaded", description: `Successfully uploaded ${previewUsers.length} users to Firebase.` });
+
       setCsvFile(null);
-      
+      setPreviewUsers([]);
+      setPreviewError(null);
     } catch (error: any) {
       console.error('Upload error:', error);
-      toast({ 
-        title: "Upload Failed", 
-        description: error.message || 'Failed to upload CSV file', 
-        variant: "destructive" 
-      });
+      toast({ title: "Upload Failed", description: error.message || 'Failed to upload CSV file', variant: "destructive" });
     } finally {
       setUploading(false);
     }
   };
 
+  const downloadCsvTemplate = () => {
+    const header = 'firstName,lastName,facilityName,tickets,pin\n';
+    const sample = 'John,Doe,Main Office,100,1234\nJane,Smith,Branch Office,150,5678\n';
+    const blob = new Blob([header + sample], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'users_template.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const filteredUsers = firebaseUsers.filter(u => {
+    const q = userSearch.trim().toLowerCase();
+    if (!q) return true;
+    const fullName = `${u.firstName} ${u.lastName}`.toLowerCase();
+    return (
+      fullName.includes(q) ||
+      (u.employeeId || '').toLowerCase().includes(q) ||
+      (u.facilityName || '').toLowerCase().includes(q)
+    );
+  });
+
+  // Stats for overview
+  const totalPrizes = state.prizes.length;
+  const prizesWithEntriesCount = state.prizes.filter(p => p.entries.length > 0).length;
+  const totalTiers = (state.prizeTiers?.length) || 0;
+  const totalUsers = firebaseUsers.length;
+  const totalTickets = state.prizes.reduce((sum, p) => sum + (p.totalTicketsInPrize || 0), 0);
+  const winnersCount = Object.keys(state.winners).length;
+
   return (
     <div className="space-y-8">
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-headline text-2xl flex items-center">
-             <ShieldAlert className="mr-3 h-7 w-7 text-primary" /> Admin Auction Control
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex gap-4">
-          {isAuctionOpen ? (
-            <p className="text-lg font-semibold text-blue-600">Auction is open - Use the Winner Drawing section below to draw winners.</p>
-          ) : (
-            <p className="text-lg font-semibold text-green-600">Winners have been drawn! Auction is closed.</p>
-          )}
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-                <Button variant="outline">
-                    <RefreshCcw className="mr-2 h-4 w-4" /> Reset Auction
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="drawing">Drawing</TabsTrigger>
+          <TabsTrigger value="inventory">Inventory</TabsTrigger>
+          <TabsTrigger value="users">Users</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6">
+          <Card>
+            <CardHeader className="flex flex-row justify-between items-center">
+              <CardTitle className="font-headline text-2xl flex items-center">
+                <ShieldAlert className="mr-3 h-7 w-7 text-primary" /> Admin Overview
+              </CardTitle>
+              <div className="flex gap-3">
+                <Button onClick={loadFirebasePrizes} variant="outline">
+                  <RefreshCcw className="mr-2 h-4 w-4" /> Refresh Prizes
                 </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                <AlertDialogDescription>
-                    This action will reset the entire auction. All prize entries will be cleared, winners will be removed, and the auction will be re-opened. 
-                    Current user ticket allocations will also be reset. Prize configurations will remain. This cannot be undone.
-                </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleResetAuction}>Confirm Reset</AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </CardContent>
-      </Card>
-
-      <WinnerDrawing />
-
-      <FirebasePrizeManager />
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-headline text-2xl flex items-center">
-            <Users className="mr-3 h-7 w-7 text-primary" /> User Management
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold flex items-center">
-              <Upload className="mr-2 h-5 w-5" />
-              Upload Users via CSV
-            </h3>
-            
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="csv-file">Select CSV File</Label>
-                <Input
-                  id="csv-file"
-                  type="file"
-                  accept=".csv"
-                  onChange={handleCsvFileChange}
-                  className="cursor-pointer"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  CSV should contain: firstName, lastName, facilityName, tickets, pin
-                </p>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline">
+                      <RefreshCcw className="mr-2 h-4 w-4" /> Reset Auction
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This action will reset the entire auction. All prize entries will be cleared, winners will be removed, and the auction will be re-opened. Current user ticket allocations will also be reset. Prize configurations will remain. This cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleResetAuction}>Confirm Reset</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
-
-              {csvFile && (
-                <div className="flex items-center gap-2 p-3 bg-muted rounded-md">
-                  <span className="text-sm">{csvFile.name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    ({(csvFile.size / 1024).toFixed(1)} KB)
-                  </span>
-                </div>
-              )}
-
-              <Button
-                onClick={handleCsvUpload}
-                disabled={!csvFile || uploading}
-                className="w-full sm:w-auto"
-              >
-                {uploading ? 'Uploading...' : 'Upload Users'}
-              </Button>
-            </div>
-
-            <div className="text-xs text-muted-foreground space-y-1">
-              <p><strong>CSV Format Example:</strong></p>
-              <div className="bg-muted p-2 rounded text-xs font-mono">
-                firstName,lastName,facilityName,tickets,pin<br />
-                John,Doe,Main Office,100,1234<br />
-                Jane,Smith,Branch Office,150,5678
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="text-sm">
+                <span className="text-muted-foreground">Auction Status: </span>
+                <Badge variant={isAuctionOpen ? "default" : "secondary"}>{isAuctionOpen ? 'Open' : 'Closed'}</Badge>
               </div>
-            </div>
-          </div>
-
-          <div className="border-t pt-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Firebase Users ({firebaseUsers.length})</h3>
-              <Button
-                onClick={loadFirebaseUsers}
-                variant="outline"
-                size="sm"
-                disabled={loadingUsers}
-              >
-                <RefreshCcw className={`h-4 w-4 mr-2 ${loadingUsers ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
-            </div>
-            <div className="max-h-60 overflow-y-auto">
-              {loadingUsers ? (
-                <div className="space-y-2">
-                  {[1, 2, 3].map(i => (
-                    <Skeleton key={i} className="h-12 w-full" />
-                  ))}
-                </div>
-              ) : firebaseUsers.length === 0 ? (
-                <p className="text-muted-foreground">No users uploaded to Firebase yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {firebaseUsers.map((user) => (
-                    <div key={user.id} className="flex justify-between items-center p-2 bg-muted rounded">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-start justify-between">
                       <div>
-                        <span className="font-medium">{user.firstName} {user.lastName}</span>
-                        <span className="text-sm text-muted-foreground ml-2">
-                          ({user.employeeId}) - {user.tickets} tickets
-                        </span>
-                        <span className="text-xs text-muted-foreground block">
-                          {user.facilityName}
-                        </span>
+                        <div className="text-sm text-muted-foreground">Prizes</div>
+                        <div className="text-2xl font-bold">{totalPrizes}</div>
+                        <div className="text-xs text-muted-foreground">{prizesWithEntriesCount} with entries</div>
+                      </div>
+                      <div className="p-2 rounded-full bg-blue-100 text-blue-600">
+                        <Gift className="h-5 w-5" />
                       </div>
                     </div>
-                  ))}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Prize Tiers</div>
+                        <div className="text-2xl font-bold">{totalTiers}</div>
+                      </div>
+                      <div className="p-2 rounded-full bg-amber-100 text-amber-600">
+                        <Layers className="h-5 w-5" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Users</div>
+                        <div className="text-2xl font-bold">{totalUsers}</div>
+                      </div>
+                      <div className="p-2 rounded-full bg-purple-100 text-purple-600">
+                        <Users className="h-5 w-5" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Tickets Allocated</div>
+                        <div className="text-2xl font-bold">{totalTickets}</div>
+                      </div>
+                      <div className="p-2 rounded-full bg-green-100 text-green-600">
+                        <Ticket className="h-5 w-5" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Winners</div>
+                        <div className="text-2xl font-bold">{winnersCount}</div>
+                      </div>
+                      <div className="p-2 rounded-full bg-rose-100 text-rose-600">
+                        <Trophy className="h-5 w-5" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="drawing">
+          <WinnerDrawing />
+        </TabsContent>
+
+        <TabsContent value="inventory">
+          <FirebasePrizeManager />
+        </TabsContent>
+
+        <TabsContent value="users" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-headline text-2xl flex items-center">
+                <Users className="mr-3 h-7 w-7 text-primary" /> User Management
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold flex items-center">
+                  <Upload className="mr-2 h-5 w-5" />
+                  Upload Users via CSV
+                </h3>
+
+                <div className="flex gap-2 flex-wrap items-center">
+                  <div className="flex-1 min-w-[240px]">
+                    <Label htmlFor="csv-file">Select CSV File</Label>
+                    <Input
+                      id="csv-file"
+                      type="file"
+                      accept=".csv"
+                      onChange={handleCsvFileChange}
+                      className="cursor-pointer"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      CSV should contain: firstName, lastName, facilityName, tickets, pin
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={downloadCsvTemplate} className="mt-6">
+                    Download Template
+                  </Button>
                 </div>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+
+                {csvFile && (
+                  <div className="flex items-center gap-2 p-3 bg-muted rounded-md">
+                    <span className="text-sm">{csvFile.name}</span>
+                    <span className="text-xs text-muted-foreground">({(csvFile.size / 1024).toFixed(1)} KB)</span>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <h4 className="font-medium">Preview</h4>
+                  {previewError ? (
+                    <p className="text-sm text-destructive">{previewError}</p>
+                  ) : previewUsers.length > 0 ? (
+                    <div className="border rounded-md overflow-hidden">
+                      <div className="max-h-48 overflow-auto text-sm">
+                        <table className="w-full">
+                          <thead className="bg-muted">
+                            <tr>
+                              <th className="text-left p-2">Name</th>
+                              <th className="text-left p-2">Employee ID</th>
+                              <th className="text-left p-2">Facility</th>
+                              <th className="text-left p-2">Tickets</th>
+                              <th className="text-left p-2">PIN</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {previewUsers.slice(0, 10).map((u, i) => (
+                              <tr key={i} className="border-t">
+                                <td className="p-2">{u.firstName} {u.lastName}</td>
+                                <td className="p-2">{u.employeeId}</td>
+                                <td className="p-2">{u.facilityName}</td>
+                                <td className="p-2">{u.tickets}</td>
+                                <td className="p-2">{u.pin}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="p-2 text-xs text-muted-foreground">Showing first {Math.min(10, previewUsers.length)} of {previewUsers.length}</div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Select a CSV to preview users before uploading.</p>
+                  )}
+                </div>
+
+                <Button onClick={handleCsvUpload} disabled={previewUsers.length === 0 || uploading} className="w-full sm:w-auto">
+                  {uploading ? 'Uploading...' : `Confirm Upload (${previewUsers.length})`}
+                </Button>
+              </div>
+
+              <div className="border-t pt-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                  <h3 className="text-lg font-semibold">Firebase Users ({firebaseUsers.length})</h3>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <Input
+                      placeholder="Search name, employee ID, facility"
+                      value={userSearch}
+                      onChange={(e) => setUserSearch(e.target.value)}
+                      className="w-full sm:w-72"
+                    />
+                    <Button onClick={loadFirebaseUsers} variant="outline" size="sm" disabled={loadingUsers}>
+                      <RefreshCcw className={`h-4 w-4 mr-2 ${loadingUsers ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </Button>
+                  </div>
+                </div>
+                <div className="max-h-60 overflow-y-auto">
+                  {loadingUsers ? (
+                    <div className="space-y-2">
+                      {[1, 2, 3].map(i => (
+                        <Skeleton key={i} className="h-12 w-full" />
+                      ))}
+                    </div>
+                  ) : filteredUsers.length === 0 ? (
+                    <p className="text-muted-foreground">No users found.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {filteredUsers.map((user) => (
+                        <div key={user.id} className="flex justify-between items-center p-2 bg-muted rounded">
+                          <div>
+                            <span className="font-medium">{user.firstName} {user.lastName}</span>
+                            <span className="text-sm text-muted-foreground ml-2">({user.employeeId}) - {user.tickets} tickets</span>
+                            <span className="text-xs text-muted-foreground block">{user.facilityName}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
