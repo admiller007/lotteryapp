@@ -26,6 +26,7 @@ import {
 } from '@/lib/firebaseService';
 import { useAppContext } from '@/context/AppContext';
 import { toast } from '@/hooks/use-toast';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 export default function FirebasePrizeManager() {
   const [prizes, setPrizes] = useState<FirebasePrize[]>([]);
@@ -35,6 +36,8 @@ export default function FirebasePrizeManager() {
   const [editingTier, setEditingTier] = useState<FirebasePrizeTier | null>(null);
   const [isPrizeDialogOpen, setIsPrizeDialogOpen] = useState(false);
   const [isTierDialogOpen, setIsTierDialogOpen] = useState(false);
+  const [deletePrizeId, setDeletePrizeId] = useState<string | null>(null);
+  const [deleteTierId, setDeleteTierId] = useState<string | null>(null);
   const [prizeFormData, setPrizeFormData] = useState({
     name: '',
     description: '',
@@ -207,8 +210,6 @@ export default function FirebasePrizeManager() {
   };
 
   const handleDeletePrize = async (prizeId: string) => {
-    if (!confirm('Are you sure you want to delete this prize?')) return;
-    
     setLoading(true);
     try {
       await deletePrize(prizeId);
@@ -230,8 +231,6 @@ export default function FirebasePrizeManager() {
   };
 
   const handleDeleteTier = async (tierId: string) => {
-    if (!confirm('Are you sure you want to delete this tier? This will remove tier assignments from all prizes.')) return;
-    
     setLoading(true);
     try {
       await deletePrizeTier(tierId);
@@ -466,7 +465,7 @@ export default function FirebasePrizeManager() {
                             <Button
                               size="sm"
                               variant="destructive"
-                              onClick={() => handleDeletePrize(prize.id!)}
+                              onClick={() => setDeletePrizeId(prize.id!)}
                             >
                               <Trash2 className="h-3 w-3" />
                             </Button>
@@ -601,7 +600,7 @@ export default function FirebasePrizeManager() {
                             <Button
                               size="sm"
                               variant="destructive"
-                              onClick={() => handleDeleteTier(tier.id!)}
+                              onClick={() => setDeleteTierId(tier.id!)}
                             >
                               <Trash2 className="h-3 w-3" />
                             </Button>
@@ -616,6 +615,40 @@ export default function FirebasePrizeManager() {
           </Tabs>
         </CardContent>
       </Card>
+      {/* Delete Confirmation Dialogs */}
+      <AlertDialog open={!!deletePrizeId} onOpenChange={(open) => !open && setDeletePrizeId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete prize?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The prize will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { if (deletePrizeId) handleDeletePrize(deletePrizeId); setDeletePrizeId(null); }}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!deleteTierId} onOpenChange={(open) => !open && setDeleteTierId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete tier?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove tier assignments from all prizes in this tier. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { if (deleteTierId) handleDeleteTier(deleteTierId); setDeleteTierId(null); }}>
+              Delete Tier
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
