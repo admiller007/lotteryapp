@@ -165,6 +165,74 @@ export const getUsers = async (): Promise<FirebaseUser[]> => {
   }
 };
 
+// Delete a user and clean up related data (allocations, prize entries, winners)
+export const deleteUserAndCleanup = async (userId: string): Promise<void> => {
+  try {
+    // Collect all operations in a batch where possible
+    const batch = writeBatch(db);
+
+    // 1) Delete user doc
+    batch.delete(doc(db, 'users', userId));
+
+    // 2) Delete allocations for this user
+    const allocsQ = query(collection(db, 'allocations'), where('userId', '==', userId));
+    const allocsSnap = await getDocs(allocsQ);
+    allocsSnap.forEach((d) => batch.delete(d.ref));
+
+    // 3) Remove user from prize entries and recalc totals
+    const prizesSnap = await getDocs(collection(db, 'prizes'));
+    prizesSnap.forEach((pDoc) => {
+      const data = pDoc.data() as FirebasePrize;
+      const entries = (data.entries || []).filter((e) => e.userId !== userId);
+      const totalTicketsInPrize = entries.reduce((sum, e) => sum + e.numTickets, 0);
+      batch.update(pDoc.ref, { entries, totalTicketsInPrize });
+    });
+
+    // 4) Delete winners where this user is the winner
+    const winnersQ = query(collection(db, 'winners'), where('winnerId', '==', userId));
+    const winnersSnap = await getDocs(winnersQ);
+    winnersSnap.forEach((d) => batch.delete(d.ref));
+
+    await batch.commit();
+  } catch (error) {
+    console.error('Error deleting user and cleaning up:', error);
+    throw error;
+  }
+};
+
+export const resetAuctionData = async (): Promise<void> => {
+  try {
+    const batch = writeBatch(db);
+
+    // Delete all allocations
+    const allocationsSnapshot = await getDocs(collection(db, 'allocations'));
+    allocationsSnapshot.forEach((docSnap) => {
+      batch.delete(docSnap.ref);
+    });
+
+    // Clear prize entries and totals
+    const prizesSnapshot = await getDocs(collection(db, 'prizes'));
+    prizesSnapshot.forEach((prizeDoc) => {
+      batch.update(prizeDoc.ref, {
+        entries: [],
+        totalTicketsInPrize: 0,
+      });
+    });
+
+    // Delete winner documents
+    const winnersSnapshot = await getDocs(collection(db, 'winners'));
+    winnersSnapshot.forEach((winnerDoc) => {
+      batch.delete(winnerDoc.ref);
+    });
+
+    await batch.commit();
+    console.log('Auction data reset in Firebase');
+  } catch (error) {
+    console.error('Error resetting auction data:', error);
+    throw error;
+  }
+};
+
 export const getUserByCredentials = async (
   firstName: string, 
   lastName: string, 

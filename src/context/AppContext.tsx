@@ -67,8 +67,8 @@ const initialState: AuctionContextState = {
   winners: {},
   allUsers: {
     // Pre-populated admin users
-    'ADMIN001': { name: 'Admin User', tickets: 100, facilityName: 'Admin Office', pin: 'admin123' },
-    'DEV007': { name: 'Developer Admin', tickets: 100, facilityName: 'Dev Office', pin: 'dev456' },
+    'ADMIN001': { id: 'ADMIN001', name: 'Admin User', tickets: 100, facilityName: 'Admin Office', pin: 'admin123' },
+    'DEV007': { id: 'DEV007', name: 'Developer Admin', tickets: 100, facilityName: 'Dev Office', pin: 'dev456' },
   },
 };
 
@@ -207,7 +207,9 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         }
       });
 
-      const updatedAllUsers = state.allUsers[userId] ? state.allUsers : { ...state.allUsers, [userId]: { name: userName }};
+      const updatedAllUsers = state.allUsers[userId]
+        ? state.allUsers
+        : { ...state.allUsers, [userId]: { id: userId, name: userName } };
 
       return {
         ...state,
@@ -311,13 +313,13 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
     case 'RESET_AUCTION': {
       if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state; 
       
-      // Clear winners from Firebase
-      import('@/lib/firebaseService').then(async ({ saveWinners }) => {
+      // Clear allocations, prize entries, and winners from Firebase
+      import('@/lib/firebaseService').then(async ({ resetAuctionData }) => {
         try {
-          await saveWinners({}); // Empty winners object
-          console.log('Winners cleared from Firebase');
+          await resetAuctionData();
+          console.log('Auction data reset in Firebase');
         } catch (error) {
-          console.error('Failed to clear winners from Firebase:', error);
+          console.error('Failed to reset auction data in Firebase:', error);
         }
       });
       
@@ -330,8 +332,9 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         ...initialState, 
         winners: {}, // Explicitly clear winners
         currentUser: resetCurrentUser, 
-        allUsers: resetCurrentUser ? { [resetCurrentUser.id]: { name: resetCurrentUser.name } } : {}, 
+        allUsers: resetCurrentUser ? { [resetCurrentUser.id]: { id: resetCurrentUser.id, name: resetCurrentUser.name } } : {}, 
         prizes: state.prizes.map(p => ({ ...p, entries: [], totalTicketsInPrize: 0 })), 
+        prizeTiers: state.prizeTiers,
       };
     }
     case 'REDRAW_PRIZE_WINNER': {
@@ -511,6 +514,24 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         },
       };
     }
+    case 'UPSERT_ALL_USERS': {
+      const updatedUsers: typeof state.allUsers = { ...state.allUsers };
+
+      Object.entries(action.payload).forEach(([userId, userData]) => {
+        const normalizedId = userData.id || userId;
+        const existing = updatedUsers[userId] ?? { id: normalizedId, name: '' };
+        updatedUsers[userId] = {
+          ...existing,
+          ...userData,
+          id: normalizedId,
+        };
+      });
+
+      return {
+        ...state,
+        allUsers: updatedUsers,
+      };
+    }
     case 'UPLOAD_USERS': {
       if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) {
         return {
@@ -519,7 +540,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         };
       }
 
-      const newUsers: Record<string, { name: string; tickets: number; facilityName: string; pin: string }> = {};
+      const newUsers: Record<string, AuctionContextState['allUsers'][string]> = {};
       
       action.payload.forEach((userData) => {
         const userName = `${userData.firstName} ${userData.lastName}`;
@@ -527,6 +548,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         const userId = `user_${userName.replace(/\s+/g, '_').toLowerCase()}_${userData.facilityName.replace(/\s+/g, '_').toLowerCase()}_${userData.pin}`;
         
         newUsers[userId] = {
+          id: userId,
           name: userName,
           tickets: userData.tickets,
           facilityName: userData.facilityName,
@@ -586,27 +608,31 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         if (saved) {
           const parsed = JSON.parse(saved);
           // Merge persisted allUsers with initial admin users
-          const mergedUsers = {
+          const mergedUsers: Record<string, AuctionContextState['allUsers'][string]> = {
             ...initialState.allUsers,
             ...parsed.allUsers,
           };
+
+          const normalizedUsers = (Object.entries(mergedUsers) as Array<[string, AuctionContextState['allUsers'][string]]>).reduce(
+            (acc, [userId, user]) => {
+              acc[userId] = {
+                ...user,
+                id: user.id || userId,
+              };
+              return acc;
+            },
+            {} as Record<string, AuctionContextState['allUsers'][string]>
+          );
           
           // Restore state from localStorage but exclude winners (they come from Firebase)
           const restoredState = { 
             ...initialState, 
             ...parsed,
             winners: {}, // Always start with empty winners - Firebase will populate
-            allUsers: mergedUsers,
+            allUsers: normalizedUsers,
             currentUser: parsed.currentUser || null,
             prizeTiers: parsed.prizeTiers || initialPrizeTiers
           };
-          
-          // Update state with restored data
-          Object.keys(restoredState).forEach(key => {
-            if (key !== 'currentUser' && restoredState[key] !== state[key]) {
-              // Update non-user state immediately
-            }
-          });
           
           if (parsed.currentUser) {
             dispatch({
@@ -743,7 +769,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const setupFirebaseData = async () => {
       try {
         // Load Firebase prizes and users first
-        const { getPrizes, getUsers, getPrizeTiers } = await import('@/lib/firebaseService');
+        const { 
+          getPrizes, 
+          getUsers, 
+          getPrizeTiers,
+          convertFirebasePrizeToAppPrize,
+          convertFirebasePrizeTierToAppTier,
+        } = await import('@/lib/firebaseService');
         const { collection, onSnapshot } = await import('firebase/firestore');
         const { db } = await import('@/lib/firebase');
         
@@ -756,40 +788,32 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         
         // Convert and set Firebase prizes
         if (firebasePrizes.length > 0) {
-          const { convertFirebasePrizeToAppPrize } = await import('@/lib/firebaseService');
           const convertedPrizes = firebasePrizes.map(convertFirebasePrizeToAppPrize);
           dispatch({ type: 'SET_FIREBASE_PRIZES', payload: convertedPrizes });
         }
         
         // Set Firebase prize tiers
         if (firebaseTiers.length > 0) {
-          dispatch({ type: 'SET_FIREBASE_PRIZE_TIERS', payload: firebaseTiers });
+          const convertedTiers = firebaseTiers.map(convertFirebasePrizeTierToAppTier);
+          dispatch({ type: 'SET_FIREBASE_PRIZE_TIERS', payload: convertedTiers });
         }
         
         // Set Firebase users
         if (firebaseUsers.length > 0) {
-          const usersObject = firebaseUsers.reduce((acc, user) => {
+          const usersMap = firebaseUsers.reduce<Record<string, AuctionContextState['allUsers'][string]>>((acc, user) => {
             const userId = user.id || user.employeeId;
             acc[userId] = {
+              id: userId,
               name: `${user.firstName} ${user.lastName}`,
               tickets: user.tickets,
               facilityName: user.facilityName,
-              pin: user.pin
+              pin: user.pin,
+              profilePictureUrl: user.profilePictureUrl,
             };
             return acc;
-          }, {} as Record<string, any>);
-          
-          dispatch({
-            type: 'UPLOAD_USERS',
-            payload: firebaseUsers.map(user => ({
-              firstName: user.firstName,
-              lastName: user.lastName,
-              employeeId: user.employeeId,
-              facilityName: user.facilityName,
-              tickets: user.tickets,
-              pin: user.pin
-            }))
-          });
+          }, {});
+
+          dispatch({ type: 'UPSERT_ALL_USERS', payload: usersMap });
         }
         
         // Now set up winners listener

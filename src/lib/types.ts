@@ -35,7 +35,7 @@ export interface AuctionContextState {
   currentUser: AppUser | null; // Can be null if no user is logged in
   isAuctionOpen: boolean;
   winners: Record<string, string>;
-  allUsers: Record<string, { name: string; tickets?: number; facilityName?: string; pin?: string }>;
+  allUsers: Record<string, { id: string; name: string; tickets?: number; facilityName?: string; pin?: string; profilePictureUrl?: string }>;
   lastAction?: {
     type: string;
     message?: string;
@@ -70,4 +70,5 @@ export type AuctionAction =
   | { type: 'LOAD_USER_ALLOCATIONS'; payload: { userId: string; allocatedTickets: Record<string, number> } }
   | { type: 'UPLOAD_USERS'; payload: Array<{ firstName: string; lastName: string; employeeId: string; facilityName: string; tickets: number; pin: string }> }
   | { type: 'UPDATE_PROFILE_PICTURE'; payload: { userId: string; profilePictureUrl: string } }
-  | { type: 'SYNC_WINNERS_FROM_FIREBASE'; payload: Record<string, string> };
+  | { type: 'SYNC_WINNERS_FROM_FIREBASE'; payload: Record<string, string> }
+  | { type: 'UPSERT_ALL_USERS'; payload: Record<string, { id: string; name: string; tickets?: number; facilityName?: string; pin?: string; profilePictureUrl?: string }> };

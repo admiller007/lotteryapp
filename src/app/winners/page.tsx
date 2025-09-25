@@ -12,6 +12,8 @@ export default function WinnersPage() {
   const { prizes, winners, allUsers, isAuctionOpen } = state;
   const [showSlotMachine, setShowSlotMachine] = useState(false);
   const [currentWinner, setCurrentWinner] = useState<{
+    prizeId: string;
+    winnerId: string;
     winnerName: string;
     prizeName: string;
     winnerProfilePicture?: string;
@@ -73,6 +75,8 @@ export default function WinnersPage() {
           if (prize && winner) {
             console.log('Showing slot machine for:', winner.name, 'winning', prize.name);
             setCurrentWinner({
+              prizeId,
+              winnerId,
               winnerName: winner.name,
               prizeName: prize.name,
               winnerProfilePicture: winner.profilePictureUrl
@@ -90,15 +94,7 @@ export default function WinnersPage() {
   const handleSlotMachineComplete = () => {
     setShowSlotMachine(false);
     if (currentWinner) {
-      // Add this winner to displayed set
-      const prizeId = Object.entries(winners).find(([_, winnerId]) => {
-        const winner = allUsers[winnerId];
-        return winner?.name === currentWinner.winnerName;
-      })?.[0];
-      
-      if (prizeId) {
-        setDisplayedWinners(prev => new Set(prev.add(prizeId)));
-      }
+      setDisplayedWinners(prev => new Set([...prev, currentWinner.prizeId]));
     }
     setCurrentWinner(null);
   };
@@ -156,7 +152,7 @@ export default function WinnersPage() {
             winnerName={currentWinner.winnerName}
             prizeName={currentWinner.prizeName}
             winnerProfilePicture={currentWinner.winnerProfilePicture}
-            allUsers={Object.values(allUsers)}
+            allUsers={Object.entries(allUsers).map(([id, user]) => ({ id, name: user.name, profilePictureUrl: user.profilePictureUrl }))}
             onComplete={handleSlotMachineComplete}
             autoStart={true}
           />

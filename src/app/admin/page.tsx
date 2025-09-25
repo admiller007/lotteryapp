@@ -14,7 +14,7 @@ import { PlusCircle, Edit3, Trash2, Play, RefreshCcw, Award, ShieldAlert, Upload
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { addUsers, getUsers, type FirebaseUser, addPrize, getPrizes, updatePrize, deletePrize, convertFirebasePrizeToAppPrize, type FirebasePrize } from '@/lib/firebaseService';
+import { addUsers, getUsers, type FirebaseUser, addPrize, getPrizes, updatePrize, deletePrize, convertFirebasePrizeToAppPrize, type FirebasePrize, deleteUserAndCleanup } from '@/lib/firebaseService';
 import FirebasePrizeManager from '@/components/FirebasePrizeManager';
 import WinnerDrawing from '@/components/WinnerDrawing';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -45,10 +45,14 @@ export default function AdminPage() {
   // Firebase users state
   const [firebaseUsers, setFirebaseUsers] = useState<FirebaseUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   
   // Firebase prizes state
   const [firebasePrizes, setFirebasePrizes] = useState<FirebasePrize[]>([]);
   const [loadingPrizes, setLoadingPrizes] = useState(false);
+
+  const ADMIN_IDS = ['ADMIN001', 'DEV007'];
 
   // Load Firebase users
   const loadFirebaseUsers = async () => {
@@ -247,6 +251,21 @@ export default function AdminPage() {
         description: "Failed to delete prize from Firebase", 
         variant: "destructive" 
       });
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    setDeleting(true);
+    try {
+      await deleteUserAndCleanup(userId);
+      await loadFirebaseUsers();
+      toast({ title: 'User Deleted', description: 'User and related data removed.' });
+    } catch (err: any) {
+      console.error('Failed to delete user:', err);
+      toast({ title: 'Delete Failed', description: err.message || 'Unable to delete user', variant: 'destructive' });
+    } finally {
+      setDeleting(false);
+      setDeletingUserId(null);
     }
   };
 
@@ -623,8 +642,8 @@ export default function AdminPage() {
                 </Button>
               </div>
 
-              <div className="border-t pt-6">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+              <div className="border-t pt-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <h3 className="text-lg font-semibold">Firebase Users ({firebaseUsers.length})</h3>
                   <div className="flex gap-2 w-full sm:w-auto">
                     <Input
@@ -642,7 +661,7 @@ export default function AdminPage() {
                 <div className="max-h-60 overflow-y-auto">
                   {loadingUsers ? (
                     <div className="space-y-2">
-                      {[1, 2, 3].map(i => (
+                      {[1, 2, 3].map((i) => (
                         <Skeleton key={i} className="h-12 w-full" />
                       ))}
                     </div>
@@ -657,6 +676,16 @@ export default function AdminPage() {
                             <span className="text-sm text-muted-foreground ml-2">({user.employeeId}) - {user.tickets} tickets</span>
                             <span className="text-xs text-muted-foreground block">{user.facilityName}</span>
                           </div>
+                          <div>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              disabled={!user.id || ADMIN_IDS.includes(user.employeeId)}
+                              onClick={() => setDeletingUserId(user.id!)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -665,6 +694,23 @@ export default function AdminPage() {
               </div>
             </CardContent>
           </Card>
+
+          <AlertDialog open={!!deletingUserId} onOpenChange={(open) => { if (!open) setDeletingUserId(null); }}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete user?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will remove the user, their ticket allocations, and any winner records. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => deletingUserId && handleDeleteUser(deletingUserId)} disabled={deleting}>
+                  {deleting ? 'Deleting...' : 'Delete'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </TabsContent>
       </Tabs>
     </div>
