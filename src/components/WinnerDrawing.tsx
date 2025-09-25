@@ -10,6 +10,7 @@ import { Trophy, Shuffle, Target, Users, Gift, Zap } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { toast } from '@/hooks/use-toast';
 import SlotMachine from '@/components/SlotMachine';
+import type { Prize } from '@/lib/types';
 
 export default function WinnerDrawing() {
   const { state, dispatch, isAdmin } = useAppContext();
@@ -76,7 +77,8 @@ export default function WinnerDrawing() {
       return;
     }
 
-    const prize = prizes.find(p => p.id === selectedPrize);
+    const prize: Prize | undefined = prizes.find((p) => p.id === selectedPrize);
+    const prizeName = prize?.name ?? 'selected prize';
     
     // Show slot machine first, then dispatch
     if (prize) {
@@ -101,7 +103,7 @@ export default function WinnerDrawing() {
       });
       toast({
         title: "Winner Drawn!",
-        description: `Winner has been drawn for ${prize?.name || 'selected prize'}.`
+        description: `Winner has been drawn for ${prizeName}.`
       });
     }
     setSelectedPrize('');
@@ -113,7 +115,7 @@ export default function WinnerDrawing() {
       payload: { prizeId } 
     });
     
-    const prize = prizes.find(p => p.id === prizeId);
+    const prize: Prize | undefined = prizes.find((p) => p.id === prizeId);
     const winnerId = state.winners[prizeId];
     const winner = winnerId ? state.allUsers[winnerId] : null;
     
