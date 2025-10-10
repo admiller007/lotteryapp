@@ -3,7 +3,74 @@
 import type { Dispatch, ReactNode } from 'react';
 import React, { createContext, useContext, useReducer, useMemo, useEffect } from 'react';
 import type { Prize, AppUser, AuctionContextState, AuctionAction, PrizeTier } from '@/lib/types';
+import type { FirebasePrize, FirebasePrizeTier } from '@/lib/firebaseService';
 import { toast } from '@/hooks/use-toast';
+
+const serializePrizeEntries = (entries: Prize['entries']) =>
+  entries
+    .map((entry) => `${entry.userId}:${entry.numTickets}`)
+    .sort()
+    .join('|');
+
+const havePrizesChanged = (prev: Prize[], next: Prize[]) => {
+  if (prev.length !== next.length) {
+    return true;
+  }
+
+  const previousById = new Map(prev.map((prize) => [prize.id, prize]));
+
+  return next.some((prize) => {
+    const existing = previousById.get(prize.id);
+    if (!existing) {
+      return true;
+    }
+
+    return (
+      existing.name !== prize.name ||
+      existing.description !== prize.description ||
+      existing.imageUrl !== prize.imageUrl ||
+      existing.tierId !== prize.tierId ||
+      existing.totalTicketsInPrize !== prize.totalTicketsInPrize ||
+      serializePrizeEntries(existing.entries) !== serializePrizeEntries(prize.entries)
+    );
+  });
+};
+
+const havePrizeTiersChanged = (prev: PrizeTier[], next: PrizeTier[]) => {
+  if (prev.length !== next.length) {
+    return true;
+  }
+
+  const previousById = new Map(prev.map((tier) => [tier.id, tier]));
+
+  return next.some((tier) => {
+    const existing = previousById.get(tier.id);
+    if (!existing) {
+      return true;
+    }
+
+    return (
+      existing.name !== tier.name ||
+      existing.description !== tier.description ||
+      existing.color !== tier.color ||
+      existing.order !== tier.order
+    );
+  });
+};
+
+const haveWinnersChanged = (
+  prev: AuctionContextState['winners'],
+  next: AuctionContextState['winners']
+) => {
+  const prevKeys = Object.keys(prev);
+  const nextKeys = Object.keys(next);
+
+  if (prevKeys.length !== nextKeys.length) {
+    return true;
+  }
+
+  return nextKeys.some((key) => prev[key] !== next[key]);
+};
 
 // Define Admin Employee IDs here. In a real app, this would come from a secure config.
 const ADMIN_EMPLOYEE_IDS = ['ADMIN001', 'DEV007']; // Example Admin IDs
@@ -599,6 +666,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [state, dispatch] = useReducer(auctionReducer, loadPersistedState());
   const [isHydrated, setIsHydrated] = React.useState(false);
   const [allocationsLoaded, setAllocationsLoaded] = React.useState<string | null>(null);
+  const latestStateRef = React.useRef(state);
+
+  React.useEffect(() => {
+    latestStateRef.current = state;
+  }, [state]);
 
   // Hydrate from localStorage on client side only
   React.useEffect(() => {
@@ -764,42 +836,42 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   // Load Firebase data on mount and set up real-time listeners
   React.useEffect(() => {
-    let winnersUnsubscribe: (() => void) | null = null;
-    
+    const unsubscribeFns: Array<() => void> = [];
+    let isCancelled = false;
+
     const setupFirebaseData = async () => {
       try {
         // Load Firebase prizes and users first
-        const { 
-          getPrizes, 
-          getUsers, 
+        const {
+          getPrizes,
+          getUsers,
           getPrizeTiers,
           convertFirebasePrizeToAppPrize,
           convertFirebasePrizeTierToAppTier,
         } = await import('@/lib/firebaseService');
         const { collection, onSnapshot } = await import('firebase/firestore');
         const { db } = await import('@/lib/firebase');
-        
-        // Load Firebase data
         const [firebasePrizes, firebaseUsers, firebaseTiers] = await Promise.all([
           getPrizes(),
-          getUsers(), 
+          getUsers(),
           getPrizeTiers()
         ]);
-        
-        // Convert and set Firebase prizes
-        if (firebasePrizes.length > 0) {
+
+        if (!isCancelled && firebasePrizes.length > 0) {
           const convertedPrizes = firebasePrizes.map(convertFirebasePrizeToAppPrize);
-          dispatch({ type: 'SET_FIREBASE_PRIZES', payload: convertedPrizes });
+          if (havePrizesChanged(latestStateRef.current.prizes, convertedPrizes)) {
+            dispatch({ type: 'SET_FIREBASE_PRIZES', payload: convertedPrizes });
+          }
         }
-        
-        // Set Firebase prize tiers
-        if (firebaseTiers.length > 0) {
+
+        if (!isCancelled && firebaseTiers.length > 0) {
           const convertedTiers = firebaseTiers.map(convertFirebasePrizeTierToAppTier);
-          dispatch({ type: 'SET_FIREBASE_PRIZE_TIERS', payload: convertedTiers });
+          if (havePrizeTiersChanged(latestStateRef.current.prizeTiers, convertedTiers)) {
+            dispatch({ type: 'SET_FIREBASE_PRIZE_TIERS', payload: convertedTiers });
+          }
         }
-        
-        // Set Firebase users
-        if (firebaseUsers.length > 0) {
+
+        if (!isCancelled && firebaseUsers.length > 0) {
           const usersMap = firebaseUsers.reduce<Record<string, AuctionContextState['allUsers'][string]>>((acc, user) => {
             const userId = user.id || user.employeeId;
             acc[userId] = {
@@ -815,32 +887,65 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
           dispatch({ type: 'UPSERT_ALL_USERS', payload: usersMap });
         }
-        
-        // Now set up winners listener
-        winnersUnsubscribe = onSnapshot(collection(db, 'winners'), (snapshot) => {
-          const winnersData: Record<string, string> = {};
-          
-          snapshot.forEach((doc) => {
-            const data = doc.data();
-            if (data.prizeId && data.winnerId) {
-              winnersData[data.prizeId] = data.winnerId;
+
+        const prizesUnsubscribe = onSnapshot(
+          collection(db, 'prizes'),
+          (snapshot) => {
+            if (isCancelled) return;
+            const prizesFromSnapshot = snapshot.docs.map((doc) =>
+              convertFirebasePrizeToAppPrize({ id: doc.id, ...(doc.data() as FirebasePrize) })
+            );
+
+            if (havePrizesChanged(latestStateRef.current.prizes, prizesFromSnapshot)) {
+              dispatch({ type: 'SET_FIREBASE_PRIZES', payload: prizesFromSnapshot });
             }
-          });
-          
-          // Only dispatch if the winners data has actually changed
-          const currentWinnersString = JSON.stringify(state.winners);
-          const newWinnersString = JSON.stringify(winnersData);
-          
-          if (currentWinnersString !== newWinnersString) {
-            console.log('Winners updated from Firebase:', winnersData);
-            dispatch({
-              type: 'SYNC_WINNERS_FROM_FIREBASE',
-              payload: winnersData
-            });
+          },
+          (error) => {
+            console.error('Error listening to prizes collection:', error);
           }
-        }, (error) => {
-          console.error('Error listening to winners collection:', error);
-        });
+        );
+
+        const tiersUnsubscribe = onSnapshot(
+          collection(db, 'prizeTiers'),
+          (snapshot) => {
+            if (isCancelled) return;
+            const tiersFromSnapshot = snapshot.docs.map((doc) =>
+              convertFirebasePrizeTierToAppTier({ id: doc.id, ...(doc.data() as FirebasePrizeTier) })
+            );
+
+            if (havePrizeTiersChanged(latestStateRef.current.prizeTiers, tiersFromSnapshot)) {
+              dispatch({ type: 'SET_FIREBASE_PRIZE_TIERS', payload: tiersFromSnapshot });
+            }
+          },
+          (error) => {
+            console.error('Error listening to prize tier collection:', error);
+          }
+        );
+
+        const winnersUnsubscribe = onSnapshot(
+          collection(db, 'winners'),
+          (snapshot) => {
+            if (isCancelled) return;
+            const winnersData: Record<string, string> = {};
+
+            snapshot.forEach((doc) => {
+              const data = doc.data() as { prizeId?: string; winnerId?: string };
+              if (data.prizeId && data.winnerId) {
+                winnersData[data.prizeId] = data.winnerId;
+              }
+            });
+
+            if (haveWinnersChanged(latestStateRef.current.winners, winnersData)) {
+              console.log('Winners updated from Firebase:', winnersData);
+              dispatch({ type: 'SYNC_WINNERS_FROM_FIREBASE', payload: winnersData });
+            }
+          },
+          (error) => {
+            console.error('Error listening to winners collection:', error);
+          }
+        );
+
+        unsubscribeFns.push(prizesUnsubscribe, tiersUnsubscribe, winnersUnsubscribe);
       } catch (error) {
         console.error('Error setting up Firebase data:', error);
       }
@@ -850,9 +955,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     // Cleanup listener on unmount
     return () => {
-      if (winnersUnsubscribe) {
-        winnersUnsubscribe();
-      }
+      isCancelled = true;
+      unsubscribeFns.forEach((unsubscribe) => unsubscribe());
     };
   }, []); // Empty dependency array to run once on mount
 

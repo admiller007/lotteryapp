@@ -1,5 +1,6 @@
 
 "use client";
+import { memo, useMemo } from 'react';
 import Image from 'next/image';
 import type { Prize } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,13 +13,16 @@ interface PrizeCardProps {
   prize: Prize;
 }
 
-export default function PrizeCard({ prize }: PrizeCardProps) {
+function PrizeCardComponent({ prize }: PrizeCardProps) {
   const { state } = useAppContext();
   const { isAuctionOpen, winners, currentUser, allUsers, prizeTiers } = state;
   const winnerId = winners[prize.id];
-  const winner = winnerId ? allUsers[winnerId] : null;
+  const winner = useMemo(() => (winnerId ? allUsers[winnerId] : null), [winnerId, allUsers]);
   const isCurrentUserWinner = currentUser && winnerId === currentUser.id;
-  const prizeTier = prize.tierId ? prizeTiers.find(tier => tier.id === prize.tierId) : null;
+  const prizeTier = useMemo(
+    () => (prize.tierId ? prizeTiers.find(tier => tier.id === prize.tierId) : null),
+    [prize.tierId, prizeTiers]
+  );
 
 
   return (
@@ -84,3 +88,7 @@ export default function PrizeCard({ prize }: PrizeCardProps) {
     </Card>
   );
 }
+
+const PrizeCard = memo(PrizeCardComponent, (prev, next) => prev.prize === next.prize);
+
+export default PrizeCard;
