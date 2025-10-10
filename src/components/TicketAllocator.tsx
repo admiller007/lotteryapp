@@ -1,6 +1,6 @@
 
 "use client";
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useAppContext } from '@/context/AppContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,10 @@ export default function TicketAllocator({ prizeId }: TicketAllocatorProps) {
   const { currentUser } = state;
 
   // Ensure currentUser is available before proceeding
-  const currentAllocation = currentUser ? currentUser.allocatedTickets[prizeId] || 0 : 0;
+  const currentAllocation = useMemo(() => {
+    if (!currentUser) return 0;
+    return currentUser.allocatedTickets[prizeId] || 0;
+  }, [currentUser?.allocatedTickets, currentUser?.id, prizeId]);
   const [numTickets, setNumTickets] = useState(currentAllocation);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
 
@@ -28,20 +31,17 @@ export default function TicketAllocator({ prizeId }: TicketAllocatorProps) {
       return;
     }
 
-    const newAllocation = currentUser.allocatedTickets[prizeId] || 0;
-    
-    // Only update if user hasn't interacted, or if the external value actually changed
-    if (!hasUserInteracted || (hasUserInteracted && newAllocation !== numTickets && newAllocation !== 0)) {
-      setNumTickets(newAllocation);
+    if (!hasUserInteracted || (hasUserInteracted && currentAllocation !== numTickets && currentAllocation !== 0)) {
+      setNumTickets(currentAllocation);
     }
-  }, [currentUser?.allocatedTickets, prizeId]); // Remove currentUser from deps to avoid constant re-renders
+  }, [currentUser, currentAllocation, hasUserInteracted, numTickets]);
 
 
   if (!currentUser) {
     return <p className="text-xs text-muted-foreground text-center">Please log in to allocate tickets.</p>;
   }
 
-  const handleAllocate = () => {
+  const handleAllocate = useCallback(() => {
     if (numTickets < 0) {
       toast({ title: "Invalid Input", description: "Number of tickets cannot be negative.", variant: "destructive" });
       return;
@@ -52,44 +52,44 @@ export default function TicketAllocator({ prizeId }: TicketAllocatorProps) {
       toast({ title: "Not Enough Tickets", description: `You only have ${remainingTickets} tickets remaining.`, variant: "destructive" });
       return;
     }
-    
+
     dispatch({
       type: 'ALLOCATE_TICKETS',
       payload: { prizeId, userId: currentUser.id, userName: currentUser.name, count: numTickets },
     });
     toast({ title: "Tickets Allocated!", description: `You've allocated ${numTickets} tickets to this prize.` });
-  };
+  }, [currentUser, currentAllocation, dispatch, numTickets, prizeId, remainingTickets]);
 
-  const maxAffordable = currentAllocation + remainingTickets;
+  const maxAffordable = useMemo(() => currentAllocation + remainingTickets, [currentAllocation, remainingTickets]);
 
-  const handleIncrement = () => {
+  const handleIncrement = useCallback(() => {
     setHasUserInteracted(true);
     if (numTickets < maxAffordable) {
       setNumTickets(prev => prev + 1);
     } else {
       toast({ title: "Max tickets reached", description: "You don't have enough tickets to add more.", variant: "destructive" });
     }
-  };
+  }, [maxAffordable, numTickets]);
 
-  const handleDecrement = () => {
+  const handleDecrement = useCallback(() => {
     setHasUserInteracted(true);
     if (numTickets > 0) {
       setNumTickets(prev => prev - 1);
     }
-  };
-  
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  }, [numTickets]);
+
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setHasUserInteracted(true);
     const inputValue = e.target.value;
-    
+
     // Allow empty input while typing
     if (inputValue === '') {
         setNumTickets(0);
         return;
     }
-    
+
     const value = parseInt(inputValue, 10);
-    
+
     if (isNaN(value) || value < 0) {
         setNumTickets(0);
     } else if (value > maxAffordable) {
@@ -98,9 +98,9 @@ export default function TicketAllocator({ prizeId }: TicketAllocatorProps) {
     } else {
         setNumTickets(value);
     }
-  };
+  }, [maxAffordable]);
 
-  const handleInputBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+  const handleInputBlur = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
     // Ensure valid value on blur
     const value = parseInt(e.target.value, 10);
     if (isNaN(value) || value < 0) {
@@ -108,7 +108,7 @@ export default function TicketAllocator({ prizeId }: TicketAllocatorProps) {
     } else if (value > maxAffordable) {
       setNumTickets(maxAffordable);
     }
-  };
+  }, [maxAffordable]);
 
   return (
     <div className="w-full space-y-2">
