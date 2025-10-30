@@ -6,19 +6,20 @@ import { useAppContext } from '@/context/AppContext';
 import type { Prize } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { PlusCircle, Edit3, Trash2, Play, RefreshCcw, Award, ShieldAlert, Upload, Users, Gift, Layers, Ticket, Trophy } from 'lucide-react';
+import { PlusCircle, Edit3, Trash2, Play, RefreshCcw, Award, ShieldAlert, Upload, Users, Gift, Layers, Ticket, Trophy, Camera, UserPlus, X, Bug } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { addUsers, getUsers, type FirebaseUser, addPrize, getPrizes, updatePrize, deletePrize, convertFirebasePrizeToAppPrize, type FirebasePrize, deleteUserAndCleanup } from '@/lib/firebaseService';
+import { addUsers, getUsers, type FirebaseUser, addPrize, getPrizes, updatePrize, deletePrize, convertFirebasePrizeToAppPrize, type FirebasePrize, deleteUserAndCleanup, adminUploadUserProfilePicture, adminRemoveUserProfilePicture, debugWinnersAndUsers } from '@/lib/firebaseService';
 import FirebasePrizeManager from '@/components/FirebasePrizeManager';
 import WinnerDrawing from '@/components/WinnerDrawing';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 type PrizeFormData = Omit<Prize, 'id' | 'entries' | 'totalTicketsInPrize' | 'winnerId'>;
 
@@ -51,6 +52,13 @@ export default function AdminPage() {
   // Firebase prizes state
   const [firebasePrizes, setFirebasePrizes] = useState<FirebasePrize[]>([]);
   const [loadingPrizes, setLoadingPrizes] = useState(false);
+
+  // Profile photo management state
+  const [profilePhotoDialogOpen, setProfilePhotoDialogOpen] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedUser, setSelectedUser] = useState<FirebaseUser | null>(null);
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const ADMIN_IDS = ['ADMIN001', 'DEV007'];
 
@@ -269,6 +277,102 @@ export default function AdminPage() {
     }
   };
 
+  // Profile photo management functions
+  const openProfilePhotoDialog = (user: FirebaseUser) => {
+    setSelectedUser(user);
+    setSelectedUserId(user.id || null);
+    setProfilePhotoFile(null);
+    setProfilePhotoDialogOpen(true);
+  };
+
+  const closeProfilePhotoDialog = () => {
+    setProfilePhotoDialogOpen(false);
+    setSelectedUser(null);
+    setSelectedUserId(null);
+    setProfilePhotoFile(null);
+  };
+
+  const handleProfilePhotoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.type.startsWith('image/')) {
+        setProfilePhotoFile(file);
+      } else {
+        toast({
+          title: "Invalid File",
+          description: "Please select an image file.",
+          variant: "destructive"
+        });
+      }
+    }
+  };
+
+  const handleUploadProfilePhoto = async () => {
+    if (!profilePhotoFile || !selectedUserId) return;
+
+    setUploadingPhoto(true);
+    try {
+      const profilePictureUrl = await adminUploadUserProfilePicture(selectedUserId, profilePhotoFile);
+
+      // Refresh users list to show updated photo
+      await loadFirebaseUsers();
+
+      toast({
+        title: "Profile Photo Updated",
+        description: "User's profile photo has been updated successfully."
+      });
+
+      closeProfilePhotoDialog();
+    } catch (error: any) {
+      console.error('Error uploading profile photo:', error);
+      toast({
+        title: "Upload Failed",
+        description: "Failed to upload profile photo. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const handleRemoveProfilePhoto = async (userId: string) => {
+    try {
+      await adminRemoveUserProfilePicture(userId);
+
+      // Refresh users list to show updated photo
+      await loadFirebaseUsers();
+
+      toast({
+        title: "Profile Photo Removed",
+        description: "User's profile photo has been removed."
+      });
+    } catch (error: any) {
+      console.error('Error removing profile photo:', error);
+      toast({
+        title: "Remove Failed",
+        description: "Failed to remove profile photo. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleDebugWinnersAndUsers = async () => {
+    try {
+      await debugWinnersAndUsers();
+      toast({
+        title: "Debug Complete",
+        description: "Check the browser console for detailed winner/user mapping information."
+      });
+    } catch (error: any) {
+      console.error('Error debugging winners and users:', error);
+      toast({
+        title: "Debug Failed",
+        description: "Failed to debug winners and users data.",
+        variant: "destructive"
+      });
+    }
+  };
+
   const handleDrawWinners = () => {
     dispatch({ type: 'DRAW_WINNERS' });
   };
@@ -449,6 +553,9 @@ export default function AdminPage() {
               <div className="flex gap-3">
                 <Button onClick={loadFirebasePrizes} variant="outline">
                   <RefreshCcw className="mr-2 h-4 w-4" /> Refresh Prizes
+                </Button>
+                <Button onClick={handleDebugWinnersAndUsers} variant="outline">
+                  <Bug className="mr-2 h-4 w-4" /> Debug Winners
                 </Button>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
@@ -670,13 +777,42 @@ export default function AdminPage() {
                   ) : (
                     <div className="space-y-2">
                       {filteredUsers.map((user) => (
-                        <div key={user.id} className="flex justify-between items-center p-2 bg-muted rounded">
-                          <div>
-                            <span className="font-medium">{user.firstName} {user.lastName}</span>
-                            <span className="text-sm text-muted-foreground ml-2">({user.employeeId}) - {user.tickets} tickets</span>
-                            <span className="text-xs text-muted-foreground block">{user.facilityName}</span>
+                        <div key={user.id} className="flex justify-between items-center p-3 bg-muted rounded">
+                          <div className="flex items-center space-x-3 flex-1">
+                            <Avatar className="w-10 h-10">
+                              <AvatarImage src={user.profilePictureUrl || ''} />
+                              <AvatarFallback className="bg-gray-100 text-gray-600">
+                                <UserPlus className="w-5 h-5" />
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2">
+                                <span className="font-medium">{user.firstName} {user.lastName}</span>
+                                <span className="text-sm text-muted-foreground">({user.employeeId})</span>
+                                <span className="text-sm text-muted-foreground">- {user.tickets} tickets</span>
+                              </div>
+                              <span className="text-xs text-muted-foreground">{user.facilityName}</span>
+                            </div>
                           </div>
-                          <div>
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openProfilePhotoDialog(user)}
+                              disabled={!user.id}
+                            >
+                              <Camera className="h-4 w-4" />
+                            </Button>
+                            {user.profilePictureUrl && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleRemoveProfilePhoto(user.id!)}
+                                disabled={!user.id}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            )}
                             <Button
                               size="sm"
                               variant="destructive"
@@ -711,6 +847,62 @@ export default function AdminPage() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+
+          {/* Profile Photo Management Dialog */}
+          <Dialog open={profilePhotoDialogOpen} onOpenChange={closeProfilePhotoDialog}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Manage Profile Photo</DialogTitle>
+              </DialogHeader>
+
+              {selectedUser && (
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <Avatar className="w-24 h-24 mx-auto mb-3">
+                      <AvatarImage src={selectedUser.profilePictureUrl || ''} />
+                      <AvatarFallback className="bg-gray-100 text-gray-600">
+                        <UserPlus className="w-12 h-12" />
+                      </AvatarFallback>
+                    </Avatar>
+                    <p className="font-medium">{selectedUser.firstName} {selectedUser.lastName}</p>
+                    <p className="text-sm text-muted-foreground">{selectedUser.facilityName}</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label htmlFor="profile-photo-upload">Select New Photo</Label>
+                    <Input
+                      id="profile-photo-upload"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleProfilePhotoFileChange}
+                      className="cursor-pointer"
+                    />
+                    {profilePhotoFile && (
+                      <p className="text-sm text-muted-foreground">
+                        Selected: {profilePhotoFile.name} ({(profilePhotoFile.size / 1024 / 1024).toFixed(2)} MB)
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={closeProfilePhotoDialog}
+                  disabled={uploadingPhoto}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleUploadProfilePhoto}
+                  disabled={!profilePhotoFile || uploadingPhoto}
+                >
+                  {uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
       </Tabs>
     </div>

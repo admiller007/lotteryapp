@@ -21,6 +21,13 @@ export default function WinnersPage() {
   const [displayedWinners, setDisplayedWinners] = useState<Set<string>>(new Set());
   const previousWinnersRef = useRef<Record<string, string>>({});
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [winnerQueue, setWinnerQueue] = useState<Array<{
+    prizeId: string;
+    winnerId: string;
+    winnerName: string;
+    prizeName: string;
+    winnerProfilePicture?: string;
+  }>>([]);
 
   // Get prizes that have winners
   const prizesWithWinners = prizes.filter(prize => winners[prize.id]);
@@ -37,15 +44,22 @@ export default function WinnersPage() {
     const currentWinners = { ...winners };
     const previousWinners = previousWinnersRef.current;
 
-    console.log('Winners page - checking for new winners:', { 
-      currentWinners, 
+    console.log('Winners page - checking for new winners:', {
+      currentWinners,
       previousWinners,
       allUsersKeys: Object.keys(allUsers),
       prizesCount: prizes.length,
       prizeIds: prizes.map(p => p.id),
       userIds: Object.keys(allUsers),
       isInitialLoad,
-      displayedWinnersSize: displayedWinners.size
+      displayedWinnersSize: displayedWinners.size,
+      allWinnersLength: allWinners.length,
+      winnerResolveDebug: Object.entries(winners).map(([prizeId, winnerId]) => ({
+        prizeId,
+        winnerId,
+        userExists: !!allUsers[winnerId],
+        userName: allUsers[winnerId]?.name
+      }))
     });
 
     // Skip slot machine on initial load - mark existing winners as displayed
@@ -59,37 +73,52 @@ export default function WinnersPage() {
 
     // Find newly drawn winners (only after initial load)
     if (!isInitialLoad) {
+      const newWinners = [];
       for (const [prizeId, winnerId] of Object.entries(currentWinners)) {
         if (!previousWinners[prizeId] && winnerId && !displayedWinners.has(prizeId)) {
           const prize = prizes.find(p => p.id === prizeId);
           const winner = allUsers[winnerId];
-          
-          console.log('New winner detected:', { 
-            prizeId, 
-            winnerId, 
-            prize: prize?.name, 
+
+          console.log('New winner detected:', {
+            prizeId,
+            winnerId,
+            prize: prize?.name,
             winner: winner?.name,
             allUserIds: Object.keys(allUsers)
           });
-          
+
           if (prize && winner) {
-            console.log('Showing slot machine for:', winner.name, 'winning', prize.name);
-            setCurrentWinner({
+            newWinners.push({
               prizeId,
               winnerId,
               winnerName: winner.name,
               prizeName: prize.name,
               winnerProfilePicture: winner.profilePictureUrl
             });
-            setShowSlotMachine(true);
-            break; // Show one winner at a time
           }
         }
+      }
+
+      // Add new winners to the queue
+      if (newWinners.length > 0) {
+        console.log('Adding winners to queue:', newWinners.length);
+        setWinnerQueue(prev => [...prev, ...newWinners]);
       }
     }
 
     previousWinnersRef.current = currentWinners;
   }, [winners, prizes, allUsers, displayedWinners, isInitialLoad]);
+
+  // Process winner queue - show slot machines sequentially
+  useEffect(() => {
+    if (winnerQueue.length > 0 && !showSlotMachine && !currentWinner) {
+      const nextWinner = winnerQueue[0];
+      console.log('Processing next winner from queue:', nextWinner.winnerName, 'winning', nextWinner.prizeName);
+      setCurrentWinner(nextWinner);
+      setShowSlotMachine(true);
+      setWinnerQueue(prev => prev.slice(1)); // Remove from queue
+    }
+  }, [winnerQueue, showSlotMachine, currentWinner]);
 
   const handleSlotMachineComplete = () => {
     setShowSlotMachine(false);
@@ -99,8 +128,8 @@ export default function WinnersPage() {
     setCurrentWinner(null);
   };
 
-  // Show "lottery in progress" only if auction is open AND no winners have been drawn yet AND not showing slot machine
-  if (isAuctionOpen && allWinners.length === 0 && !showSlotMachine) {
+  // Show "lottery in progress" only if no winners have been drawn yet AND not showing slot machine (regardless of auction status)
+  if (allWinners.length === 0 && !showSlotMachine) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="text-center space-y-6">
@@ -110,9 +139,9 @@ export default function WinnersPage() {
             </div>
           </div>
           <div>
-            <h1 className="text-4xl font-bold font-headline mb-4">Lottery in Progress</h1>
+            <h1 className="text-4xl font-bold font-headline mb-4">Ready for Drawing</h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              The lottery is currently active! Winners will be announced here once the drawing begins.
+              The lottery setup is complete! Winners will be announced here as they are drawn.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto mt-12">
@@ -134,7 +163,9 @@ export default function WinnersPage() {
               <CardContent className="pt-6 text-center">
                 <Calendar className="h-8 w-8 text-primary mx-auto mb-2" />
                 <p className="font-semibold">Status</p>
-                <Badge variant="secondary" className="text-sm">Active</Badge>
+                <Badge variant={isAuctionOpen ? "default" : "secondary"} className="text-sm">
+                  {isAuctionOpen ? "Ready to Draw" : "Drawing Complete"}
+                </Badge>
               </CardContent>
             </Card>
           </div>
@@ -169,7 +200,10 @@ export default function WinnersPage() {
               </div>
               <h1 className="text-4xl font-bold font-headline mb-4">🎉 Congratulations to Our Winners! 🎉</h1>
               <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-                Drawing in progress... More winners being announced!
+                {winnerQueue.length > 0
+                  ? `Announcing winners... ${winnerQueue.length + 1} more to go!`
+                  : "Drawing in progress... More winners being announced!"
+                }
               </p>
             </div>
           </div>

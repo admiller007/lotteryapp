@@ -276,9 +276,11 @@ export default function WinnerDrawing() {
 
   const prizesWithEntries = prizes.filter(p => p.entries.length > 0);
   const prizesWithWinners = prizes.filter(p => winners[p.id]);
-  const tiersWithPrizes = prizeTiers.filter(tier => 
-    prizes.some(p => p.tierId === tier.id && p.entries.length > 0)
-  );
+  const tiersWithPrizes = prizeTiers.filter(tier => {
+    const tierPrizes = prizes.filter(p => p.tierId === tier.id && p.entries.length > 0);
+    // Only include tier if it has prizes with entries AND at least one prize doesn't have a winner yet
+    return tierPrizes.length > 0 && tierPrizes.some(p => !winners[p.id]);
+  });
 
   return (
     <div className="space-y-6">
@@ -368,16 +370,17 @@ export default function WinnerDrawing() {
                 <SelectContent>
                   {tiersWithPrizes.map((tier) => {
                     const tierPrizes = prizes.filter(p => p.tierId === tier.id && p.entries.length > 0);
+                    const prizesWithoutWinners = tierPrizes.filter(p => !winners[p.id]);
                     return (
                       <SelectItem key={tier.id} value={tier.id}>
                         <div className="flex items-center gap-2">
-                          <div 
+                          <div
                             className="w-3 h-3 rounded-full"
                             style={{ backgroundColor: tier.color }}
                           />
                           <span>{tier.name}</span>
                           <Badge variant="secondary" className="ml-2">
-                            {tierPrizes.length} prizes
+                            {prizesWithoutWinners.length} left
                           </Badge>
                         </div>
                       </SelectItem>
@@ -469,6 +472,11 @@ export default function WinnerDrawing() {
                           <p className="font-medium">{prize.name}</p>
                           <p className="text-sm text-muted-foreground">
                             Winner: {winner?.name || 'Unknown'}
+                            {!winner && (
+                              <span className="text-xs text-red-500 block">
+                                (ID: {winnerId})
+                              </span>
+                            )}
                           </p>
                         </div>
                       </div>

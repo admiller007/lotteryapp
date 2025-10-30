@@ -244,9 +244,19 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
           usersWhoWon.add(winnerId);
         }
       }
-      return { 
-        ...state, 
-        winners: newWinners, 
+
+      // Save all winners to Firebase
+      import('@/lib/firebaseService').then(async ({ saveWinners }) => {
+        try {
+          await saveWinners(newWinners);
+        } catch (error) {
+          console.error('Failed to save all winners to Firebase:', error);
+        }
+      });
+
+      return {
+        ...state,
+        winners: newWinners,
         isAuctionOpen: false,
         lastAction: { type: 'WINNERS_DRAWN' },
       };
@@ -493,7 +503,16 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
           usersWhoWon.add(winnerId);
         }
       }
-      
+
+      // Save all winners to Firebase
+      import('@/lib/firebaseService').then(async ({ saveWinners }) => {
+        try {
+          await saveWinners(newWinners);
+        } catch (error) {
+          console.error('Failed to save tier winners to Firebase:', error);
+        }
+      });
+
       const tier = state.prizeTiers.find(t => t.id === tierId);
       return {
         ...state,
@@ -801,17 +820,38 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         // Set Firebase users
         if (firebaseUsers.length > 0) {
           const usersMap = firebaseUsers.reduce<Record<string, AuctionContextState['allUsers'][string]>>((acc, user) => {
-            const userId = user.id || user.employeeId;
-            acc[userId] = {
-              id: userId,
+            const userObj = {
+              id: user.id || user.employeeId,
               name: `${user.firstName} ${user.lastName}`,
               tickets: user.tickets,
               facilityName: user.facilityName,
               pin: user.pin,
               profilePictureUrl: user.profilePictureUrl,
             };
+
+            // Map by Firebase document ID (used for winners)
+            if (user.id) {
+              acc[user.id] = userObj;
+            }
+
+            // Also map by employeeId (used for allocations)
+            if (user.employeeId) {
+              acc[user.employeeId] = userObj;
+            }
+
             return acc;
           }, {});
+
+          // Ensure admin users are always included in the mapping
+          const adminUsers = {
+            'ADMIN001': { id: 'ADMIN001', name: 'Admin User', tickets: 100, facilityName: 'Admin Office', pin: 'admin123' },
+            'DEV007': { id: 'DEV007', name: 'Developer Admin', tickets: 100, facilityName: 'Dev Office', pin: 'dev456' },
+          };
+
+          // Add admin users to the mapping
+          Object.entries(adminUsers).forEach(([id, user]) => {
+            usersMap[id] = user;
+          });
 
           dispatch({ type: 'UPSERT_ALL_USERS', payload: usersMap });
         }
