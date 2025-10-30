@@ -604,3 +604,70 @@ export const deleteProfilePicture = async (profilePictureUrl: string): Promise<v
     // Don't throw here as this is cleanup - we don't want to fail the main operation
   }
 };
+
+// Admin function to upload profile picture for any user
+export const adminUploadUserProfilePicture = async (userId: string, file: File): Promise<string> => {
+  try {
+    // Use the existing upload function
+    const profilePictureUrl = await uploadProfilePicture(userId, file);
+
+    // Update the user's profile picture in Firestore
+    await updateUserProfilePicture(userId, profilePictureUrl);
+
+    return profilePictureUrl;
+  } catch (error) {
+    console.error('Error uploading profile picture for user:', error);
+    throw error;
+  }
+};
+
+// Admin function to remove profile picture for any user
+export const adminRemoveUserProfilePicture = async (userId: string): Promise<void> => {
+  try {
+    // Get the user to check if they have a profile picture
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (userDoc.exists()) {
+      const userData = userDoc.data() as FirebaseUser;
+      if (userData.profilePictureUrl) {
+        // Delete the file if it exists
+        await deleteProfilePicture(userData.profilePictureUrl);
+      }
+    }
+
+    // Remove the profile picture URL from the user document
+    await updateUserProfilePicture(userId, '');
+  } catch (error) {
+    console.error('Error removing profile picture for user:', error);
+    throw error;
+  }
+};
+
+// Debug function to check winner and user data consistency
+export const debugWinnersAndUsers = async (): Promise<void> => {
+  try {
+    console.log('=== DEBUG: Winners and Users Data ===');
+
+    // Get all winners
+    const winnersSnapshot = await getDocs(collection(db, 'winners'));
+    const winners: any[] = [];
+    winnersSnapshot.forEach(doc => {
+      const data = doc.data();
+      winners.push({ docId: doc.id, ...data });
+    });
+    console.log('Winners in Firebase:', winners);
+
+    // Get all users
+    const users = await getUsers();
+    console.log('Users in Firebase:', users.map(u => ({ id: u.id, employeeId: u.employeeId, name: `${u.firstName} ${u.lastName}` })));
+
+    // Check if winner IDs match user IDs
+    winners.forEach(winner => {
+      const matchingUser = users.find(u => u.id === winner.winnerId || u.employeeId === winner.winnerId);
+      console.log(`Winner ${winner.winnerId} for prize ${winner.prizeId}:`,
+        matchingUser ? `Found user: ${matchingUser.firstName} ${matchingUser.lastName}` : 'NO MATCHING USER FOUND');
+    });
+
+  } catch (error) {
+    console.error('Error debugging winners and users:', error);
+  }
+};
