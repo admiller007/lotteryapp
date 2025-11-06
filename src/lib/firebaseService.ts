@@ -132,7 +132,7 @@ export const addUsers = async (users: Omit<FirebaseUser, 'id' | 'createdAt'>[]):
   try {
     const batch = writeBatch(db);
     const userRefs: string[] = [];
-    
+
     users.forEach(user => {
       const docRef = doc(collection(db, 'users'));
       batch.set(docRef, {
@@ -141,7 +141,7 @@ export const addUsers = async (users: Omit<FirebaseUser, 'id' | 'createdAt'>[]):
       });
       userRefs.push(docRef.id);
     });
-    
+
     await batch.commit();
     return userRefs;
   } catch (error) {
@@ -161,6 +161,20 @@ export const getUsers = async (): Promise<FirebaseUser[]> => {
     })) as FirebaseUser[];
   } catch (error) {
     console.error('Error getting users:', error);
+    throw error;
+  }
+};
+
+export const updateUser = async (
+  id: string,
+  updates: Partial<Omit<FirebaseUser, 'id' | 'createdAt'>>
+): Promise<void> => {
+  try {
+    const userRef = doc(db, 'users', id);
+    const { id: _id, createdAt: _createdAt, ...rest } = updates as Record<string, unknown>;
+    await updateDoc(userRef, rest);
+  } catch (error) {
+    console.error('Error updating user:', error);
     throw error;
   }
 };

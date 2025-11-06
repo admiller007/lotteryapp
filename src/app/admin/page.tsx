@@ -1,6 +1,6 @@
 
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ChangeEvent, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppContext } from '@/context/AppContext';
 import type { Prize } from '@/lib/types';
@@ -14,7 +14,7 @@ import { PlusCircle, Edit3, Trash2, Play, RefreshCcw, Award, ShieldAlert, Upload
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { addUsers, getUsers, type FirebaseUser, addPrize, getPrizes, updatePrize, deletePrize, convertFirebasePrizeToAppPrize, type FirebasePrize, deleteUserAndCleanup, adminUploadUserProfilePicture, adminRemoveUserProfilePicture, debugWinnersAndUsers } from '@/lib/firebaseService';
+import { addUser, addUsers, getUsers, type FirebaseUser, addPrize, getPrizes, updatePrize, deletePrize, convertFirebasePrizeToAppPrize, type FirebasePrize, deleteUserAndCleanup, adminUploadUserProfilePicture, adminRemoveUserProfilePicture, debugWinnersAndUsers, updateUser } from '@/lib/firebaseService';
 import FirebasePrizeManager from '@/components/FirebasePrizeManager';
 import WinnerDrawing from '@/components/WinnerDrawing';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -22,6 +22,24 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 type PrizeFormData = Omit<Prize, 'id' | 'entries' | 'totalTicketsInPrize' | 'winnerId'>;
+
+type UserFormData = {
+  firstName: string;
+  lastName: string;
+  employeeId: string;
+  facilityName: string;
+  tickets: string;
+  pin: string;
+};
+
+const createInitialUserFormData = (): UserFormData => ({
+  firstName: '',
+  lastName: '',
+  employeeId: '',
+  facilityName: '',
+  tickets: '0',
+  pin: '',
+});
 
 export default function AdminPage() {
   const { state, dispatch, isAdmin, isHydrated } = useAppContext();
@@ -35,6 +53,12 @@ export default function AdminPage() {
     description: '',
     imageUrl: '',
   });
+
+  // User management form state
+  const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
+  const [editingUserRecord, setEditingUserRecord] = useState<FirebaseUser | null>(null);
+  const [userFormData, setUserFormData] = useState<UserFormData>(createInitialUserFormData());
+  const [savingUser, setSavingUser] = useState(false);
 
   // CSV Upload state
   const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -68,6 +92,26 @@ export default function AdminPage() {
     try {
       const users = await getUsers();
       setFirebaseUsers(users);
+
+      const usersMap = users.reduce(
+        (acc, user) => {
+          if (!user.id) return acc;
+          acc[user.id] = {
+            id: user.id,
+            name: `${user.firstName} ${user.lastName}`.trim(),
+            tickets: user.tickets,
+            facilityName: user.facilityName,
+            pin: user.pin,
+            profilePictureUrl: user.profilePictureUrl,
+          };
+          return acc;
+        },
+        {} as Record<string, { id: string; name: string; tickets?: number; facilityName?: string; pin?: string; profilePictureUrl?: string }>
+      );
+
+      if (Object.keys(usersMap).length > 0) {
+        dispatch({ type: 'UPSERT_ALL_USERS', payload: usersMap });
+      }
     } catch (error: any) {
       console.error('Error loading Firebase users:', error);
       toast({
@@ -274,6 +318,113 @@ export default function AdminPage() {
     } finally {
       setDeleting(false);
       setDeletingUserId(null);
+    }
+  };
+
+  const openAddUserDialog = () => {
+    setEditingUserRecord(null);
+    setUserFormData(createInitialUserFormData());
+    setIsUserDialogOpen(true);
+  };
+
+  const openEditUserDialog = (user: FirebaseUser) => {
+    setEditingUserRecord(user);
+    setUserFormData({
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
+      employeeId: user.employeeId || '',
+      facilityName: user.facilityName || '',
+      tickets: String(user.tickets ?? 0),
+      pin: user.pin || '',
+    });
+    setIsUserDialogOpen(true);
+  };
+
+  const closeUserDialog = () => {
+    setIsUserDialogOpen(false);
+    setEditingUserRecord(null);
+    setUserFormData(createInitialUserFormData());
+  };
+
+  const handleUserDialogOpenChange = (open: boolean) => {
+    if (!open) {
+      if (savingUser) return;
+      closeUserDialog();
+    } else {
+      setIsUserDialogOpen(true);
+    }
+  };
+
+  const handleUserFieldChange = (field: keyof UserFormData) => (event: ChangeEvent<HTMLInputElement>) => {
+    setUserFormData((prev) => ({
+      ...prev,
+      [field]: event.target.value,
+    }));
+  };
+
+  const handleUserFormSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const parsedTickets = Number(userFormData.tickets);
+    if (Number.isNaN(parsedTickets) || parsedTickets < 0) {
+      toast({
+        title: 'Invalid Tickets',
+        description: 'Tickets must be a non-negative number.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const sanitizedData = {
+      firstName: userFormData.firstName.trim(),
+      lastName: userFormData.lastName.trim(),
+      employeeId: userFormData.employeeId.trim(),
+      facilityName: userFormData.facilityName.trim(),
+      tickets: parsedTickets,
+      pin: userFormData.pin.trim(),
+    };
+
+    const missingField = Object.entries(sanitizedData).find(([key, value]) => {
+      if (key === 'tickets') return false;
+      return value === '';
+    });
+
+    if (missingField) {
+      toast({
+        title: 'Missing Information',
+        description: 'Please complete all required fields.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setSavingUser(true);
+    try {
+      if (editingUserRecord?.id) {
+        await updateUser(editingUserRecord.id, sanitizedData);
+        toast({
+          title: 'User Updated',
+          description: `${sanitizedData.firstName} ${sanitizedData.lastName}'s record has been updated.`,
+        });
+      } else {
+        await addUser(sanitizedData);
+        toast({
+          title: 'User Added',
+          description: `${sanitizedData.firstName} ${sanitizedData.lastName} has been added.`,
+        });
+      }
+
+      await loadFirebaseUsers();
+      closeUserDialog();
+    } catch (error: any) {
+      console.error('Error saving user:', error);
+      toast({
+        title: 'Save Failed',
+        description: error?.message || 'Unable to save user changes.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingUser(false);
     }
   };
 
@@ -752,17 +903,22 @@ export default function AdminPage() {
               <div className="border-t pt-6 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <h3 className="text-lg font-semibold">Firebase Users ({firebaseUsers.length})</h3>
-                  <div className="flex gap-2 w-full sm:w-auto">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
                     <Input
                       placeholder="Search name, employee ID, facility"
                       value={userSearch}
                       onChange={(e) => setUserSearch(e.target.value)}
                       className="w-full sm:w-72"
                     />
-                    <Button onClick={loadFirebaseUsers} variant="outline" size="sm" disabled={loadingUsers}>
-                      <RefreshCcw className={`h-4 w-4 mr-2 ${loadingUsers ? 'animate-spin' : ''}`} />
-                      Refresh
-                    </Button>
+                    <div className="flex gap-2 sm:justify-end">
+                      <Button onClick={openAddUserDialog} size="sm">
+                        <PlusCircle className="h-4 w-4 mr-2" /> Add User
+                      </Button>
+                      <Button onClick={loadFirebaseUsers} variant="outline" size="sm" disabled={loadingUsers}>
+                        <RefreshCcw className={`h-4 w-4 mr-2 ${loadingUsers ? 'animate-spin' : ''}`} />
+                        Refresh
+                      </Button>
+                    </div>
                   </div>
                 </div>
                 <div className="max-h-60 overflow-y-auto">
@@ -798,6 +954,14 @@ export default function AdminPage() {
                             <Button
                               size="sm"
                               variant="outline"
+                              onClick={() => openEditUserDialog(user)}
+                              disabled={!user.id}
+                            >
+                              <Edit3 className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
                               onClick={() => openProfilePhotoDialog(user)}
                               disabled={!user.id}
                             >
@@ -830,6 +994,99 @@ export default function AdminPage() {
               </div>
             </CardContent>
           </Card>
+
+          <Dialog open={isUserDialogOpen} onOpenChange={handleUserDialogOpenChange}>
+            <DialogContent className="max-w-xl">
+              <DialogHeader>
+                <DialogTitle>{editingUserRecord ? 'Edit User' : 'Add User'}</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleUserFormSubmit} className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="admin-user-first-name">First Name</Label>
+                    <Input
+                      id="admin-user-first-name"
+                      value={userFormData.firstName}
+                      onChange={handleUserFieldChange('firstName')}
+                      placeholder="Jane"
+                      autoComplete="given-name"
+                      required
+                      disabled={savingUser}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="admin-user-last-name">Last Name</Label>
+                    <Input
+                      id="admin-user-last-name"
+                      value={userFormData.lastName}
+                      onChange={handleUserFieldChange('lastName')}
+                      placeholder="Doe"
+                      autoComplete="family-name"
+                      required
+                      disabled={savingUser}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="admin-user-employee-id">Employee ID</Label>
+                    <Input
+                      id="admin-user-employee-id"
+                      value={userFormData.employeeId}
+                      onChange={handleUserFieldChange('employeeId')}
+                      placeholder="EMP123"
+                      autoComplete="off"
+                      required
+                      disabled={savingUser}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="admin-user-facility">Facility</Label>
+                    <Input
+                      id="admin-user-facility"
+                      value={userFormData.facilityName}
+                      onChange={handleUserFieldChange('facilityName')}
+                      placeholder="Main Campus"
+                      autoComplete="organization"
+                      required
+                      disabled={savingUser}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="admin-user-tickets">Tickets</Label>
+                    <Input
+                      id="admin-user-tickets"
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={userFormData.tickets}
+                      onChange={handleUserFieldChange('tickets')}
+                      required
+                      disabled={savingUser}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="admin-user-pin">PIN</Label>
+                    <Input
+                      id="admin-user-pin"
+                      value={userFormData.pin}
+                      onChange={handleUserFieldChange('pin')}
+                      placeholder="1234"
+                      autoComplete="off"
+                      required
+                      disabled={savingUser}
+                    />
+                  </div>
+                </div>
+                <DialogFooter className="gap-2 sm:space-x-2">
+                  <Button type="button" variant="outline" onClick={closeUserDialog} disabled={savingUser}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={savingUser}>
+                    {savingUser ? 'Saving...' : editingUserRecord ? 'Update User' : 'Add User'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
 
           <AlertDialog open={!!deletingUserId} onOpenChange={(open) => { if (!open) setDeletingUserId(null); }}>
             <AlertDialogContent>
