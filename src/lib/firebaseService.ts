@@ -29,6 +29,7 @@ export interface FirebaseUser {
   facilityName: string;
   tickets: number;
   pin: string;
+  status?: 'working' | 'at_party';
   profilePictureUrl?: string;
   createdAt?: Timestamp;
 }
@@ -119,6 +120,7 @@ export const addUser = async (user: Omit<FirebaseUser, 'id' | 'createdAt'>): Pro
   try {
     const docRef = await addDoc(collection(db, 'users'), {
       ...user,
+      status: user.status || 'working',
       createdAt: Timestamp.now()
     });
     return docRef.id;
@@ -137,6 +139,7 @@ export const addUsers = async (users: Omit<FirebaseUser, 'id' | 'createdAt'>[]):
       const docRef = doc(collection(db, 'users'));
       batch.set(docRef, {
         ...user,
+        status: user.status || 'working',
         createdAt: Timestamp.now()
       });
       userRefs.push(docRef.id);
@@ -161,6 +164,16 @@ export const getUsers = async (): Promise<FirebaseUser[]> => {
     })) as FirebaseUser[];
   } catch (error) {
     console.error('Error getting users:', error);
+    throw error;
+  }
+};
+
+export const updateUser = async (id: string, updates: Partial<FirebaseUser>): Promise<void> => {
+  try {
+    const userRef = doc(db, 'users', id);
+    await updateDoc(userRef, updates);
+  } catch (error) {
+    console.error('Error updating user:', error);
     throw error;
   }
 };
