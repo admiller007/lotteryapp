@@ -14,12 +14,13 @@ import { PlusCircle, Edit3, Trash2, Play, RefreshCcw, Award, ShieldAlert, Upload
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { addUsers, getUsers, type FirebaseUser, addPrize, getPrizes, updatePrize, deletePrize, convertFirebasePrizeToAppPrize, type FirebasePrize, deleteUserAndCleanup, adminUploadUserProfilePicture, adminRemoveUserProfilePicture, debugWinnersAndUsers } from '@/lib/firebaseService';
+import { addUsers, getUsers, type FirebaseUser, addPrize, getPrizes, updatePrize, deletePrize, convertFirebasePrizeToAppPrize, type FirebasePrize, deleteUserAndCleanup, adminUploadUserProfilePicture, adminRemoveUserProfilePicture, debugWinnersAndUsers, addUser, updateUser } from '@/lib/firebaseService';
 import FirebasePrizeManager from '@/components/FirebasePrizeManager';
 import WinnerDrawing from '@/components/WinnerDrawing';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type PrizeFormData = Omit<Prize, 'id' | 'entries' | 'totalTicketsInPrize' | 'winnerId'>;
 
@@ -59,6 +60,17 @@ export default function AdminPage() {
   const [selectedUser, setSelectedUser] = useState<FirebaseUser | null>(null);
   const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [newUserForm, setNewUserForm] = useState({
+    firstName: '',
+    lastName: '',
+    employeeId: '',
+    facilityName: '',
+    tickets: '',
+    pin: '',
+    status: 'working' as 'working' | 'at_party',
+  });
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [userEdits, setUserEdits] = useState<Record<string, { tickets: number; status: 'working' | 'at_party' }>>({});
 
   const ADMIN_IDS = ['ADMIN001', 'DEV007'];
 
@@ -67,7 +79,7 @@ export default function AdminPage() {
     setLoadingUsers(true);
     try {
       const users = await getUsers();
-      setFirebaseUsers(users);
+      setFirebaseUsers(users.map(u => ({ ...u, status: u.status || 'working' })));
     } catch (error: any) {
       console.error('Error loading Firebase users:', error);
       toast({
@@ -102,6 +114,102 @@ export default function AdminPage() {
       });
     } finally {
       setLoadingPrizes(false);
+    }
+  };
+
+  const resetNewUserForm = () => {
+    setNewUserForm({
+      firstName: '',
+      lastName: '',
+      employeeId: '',
+      facilityName: '',
+      tickets: '',
+      pin: '',
+      status: 'working',
+    });
+  };
+
+  const handleNewUserChange = (field: keyof typeof newUserForm, value: string) => {
+    setNewUserForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUserForm.firstName || !newUserForm.lastName || !newUserForm.employeeId || !newUserForm.facilityName || !newUserForm.pin) {
+      toast({ title: "Missing fields", description: "Please fill in all required user fields.", variant: "destructive" });
+      return;
+    }
+    const ticketsNumber = parseInt(newUserForm.tickets || '0', 10);
+    if (isNaN(ticketsNumber) || ticketsNumber < 0) {
+      toast({ title: "Invalid tickets", description: "Tickets must be a non-negative number.", variant: "destructive" });
+      return;
+    }
+    setCreatingUser(true);
+    try {
+      await addUser({
+        firstName: newUserForm.firstName.trim(),
+        lastName: newUserForm.lastName.trim(),
+        employeeId: newUserForm.employeeId.trim(),
+        facilityName: newUserForm.facilityName.trim(),
+        tickets: ticketsNumber,
+        pin: newUserForm.pin.trim(),
+        status: newUserForm.status,
+      });
+      await loadFirebaseUsers();
+      toast({ title: "User Added", description: `${newUserForm.firstName} ${newUserForm.lastName} was created.` });
+      resetNewUserForm();
+    } catch (error: any) {
+      console.error('Error creating user:', error);
+      toast({ title: "Error", description: error.message || 'Failed to create user', variant: "destructive" });
+    } finally {
+      setCreatingUser(false);
+    }
+  };
+
+  const handleUserEditChange = (userId: string, field: 'tickets' | 'status', value: string | number) => {
+    setUserEdits((prev) => {
+      const existing = prev[userId] || { tickets: firebaseUsers.find(u => u.id === userId)?.tickets || 0, status: firebaseUsers.find(u => u.id === userId)?.status || 'working' };
+      return {
+        ...prev,
+        [userId]: {
+          ...existing,
+          [field]: field === 'tickets' ? Number(value) : value,
+        } as { tickets: number; status: 'working' | 'at_party' },
+      };
+    });
+  };
+
+  const handleSaveUserEdits = async (user: FirebaseUser) => {
+    if (!user.id) return;
+    const edits = userEdits[user.id] || { tickets: user.tickets, status: (user.status as 'working' | 'at_party') || 'working' };
+    const payload: Partial<FirebaseUser> = {};
+    const ticketsNumber = Number(edits.tickets);
+    if (isNaN(ticketsNumber) || ticketsNumber < 0) {
+      toast({ title: "Invalid tickets", description: "Tickets must be zero or greater.", variant: "destructive" });
+      return;
+    }
+    if (ticketsNumber !== user.tickets) {
+      payload.tickets = ticketsNumber;
+    }
+    if (edits.status && edits.status !== user.status) {
+      payload.status = edits.status;
+    }
+    if (Object.keys(payload).length === 0) {
+      toast({ title: "No changes", description: "Nothing to update for this user." });
+      return;
+    }
+    try {
+      await updateUser(user.id, payload);
+      setUserEdits((prev) => {
+        const updated = { ...prev };
+        delete updated[user.id];
+        return updated;
+      });
+      await loadFirebaseUsers();
+      toast({ title: "User Updated", description: `${user.firstName} ${user.lastName} updated successfully.` });
+    } catch (error: any) {
+      console.error('Failed to update user:', error);
+      toast({ title: "Update Failed", description: error.message || 'Could not update user', variant: "destructive" });
     }
   };
 
@@ -677,6 +785,56 @@ export default function AdminPage() {
             <CardContent className="space-y-6">
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold flex items-center">
+                  <UserPlus className="mr-2 h-5 w-5" />
+                  Add User Manually
+                </h3>
+                <form onSubmit={handleCreateUser} className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="first-name">First Name</Label>
+                    <Input id="first-name" value={newUserForm.firstName} onChange={(e) => handleNewUserChange('firstName', e.target.value)} required />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="last-name">Last Name</Label>
+                    <Input id="last-name" value={newUserForm.lastName} onChange={(e) => handleNewUserChange('lastName', e.target.value)} required />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="facility-name">Facility</Label>
+                    <Input id="facility-name" value={newUserForm.facilityName} onChange={(e) => handleNewUserChange('facilityName', e.target.value)} required />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="employee-id">Employee ID</Label>
+                    <Input id="employee-id" value={newUserForm.employeeId} onChange={(e) => handleNewUserChange('employeeId', e.target.value)} required />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="tickets">Tickets</Label>
+                    <Input id="tickets" type="number" min="0" value={newUserForm.tickets} onChange={(e) => handleNewUserChange('tickets', e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="pin">PIN</Label>
+                    <Input id="pin" value={newUserForm.pin} onChange={(e) => handleNewUserChange('pin', e.target.value)} required />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Status</Label>
+                    <Select value={newUserForm.status} onValueChange={(val) => handleNewUserChange('status', val)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="working">Working</SelectItem>
+                        <SelectItem value="at_party">At Party</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-end">
+                    <Button type="submit" disabled={creatingUser} className="w-full">
+                      {creatingUser ? 'Saving...' : 'Create User'}
+                    </Button>
+                  </div>
+                </form>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold flex items-center">
                   <Upload className="mr-2 h-5 w-5" />
                   Upload Users via CSV
                 </h3>
@@ -777,7 +935,7 @@ export default function AdminPage() {
                   ) : (
                     <div className="space-y-2">
                       {filteredUsers.map((user) => (
-                        <div key={user.id} className="flex justify-between items-center p-3 bg-muted rounded">
+                        <div key={user.id} className="space-y-3 p-3 bg-muted rounded">
                           <div className="flex items-center space-x-3 flex-1">
                             <Avatar className="w-10 h-10">
                               <AvatarImage src={user.profilePictureUrl || ''} />
@@ -789,11 +947,51 @@ export default function AdminPage() {
                               <div className="flex items-center space-x-2">
                                 <span className="font-medium">{user.firstName} {user.lastName}</span>
                                 <span className="text-sm text-muted-foreground">({user.employeeId})</span>
-                                <span className="text-sm text-muted-foreground">- {user.tickets} tickets</span>
                               </div>
-                              <span className="text-xs text-muted-foreground">{user.facilityName}</span>
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                <span>{user.facilityName}</span>
+                                <span>Tickets: {user.tickets}</span>
+                                <span>Status: {user.status === 'at_party' ? 'At Party' : 'Working'}</span>
+                              </div>
                             </div>
                           </div>
+                          <div className="grid gap-3 md:grid-cols-3 items-end">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Status</Label>
+                              <Select
+                                value={(userEdits[user.id || '']?.status as 'working' | 'at_party') || user.status || 'working'}
+                                onValueChange={(val) => user.id && handleUserEditChange(user.id, 'status', val)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="working">Working</SelectItem>
+                                  <SelectItem value="at_party">At Party</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Tickets</Label>
+                              <Input
+                                type="number"
+                                min="0"
+                                value={userEdits[user.id || '']?.tickets ?? user.tickets}
+                                onChange={(e) => user.id && handleUserEditChange(user.id, 'tickets', e.target.value)}
+                              />
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                className="w-full"
+                                onClick={() => handleSaveUserEdits(user)}
+                                disabled={!user.id}
+                              >
+                                Save
+                              </Button>
+                            </div>
+                          </div>
+
                           <div className="flex items-center space-x-2">
                             <Button
                               size="sm"

@@ -67,8 +67,8 @@ const initialState: AuctionContextState = {
   winners: {},
   allUsers: {
     // Pre-populated admin users
-    'ADMIN001': { id: 'ADMIN001', name: 'Admin User', tickets: 100, facilityName: 'Admin Office', pin: 'admin123' },
-    'DEV007': { id: 'DEV007', name: 'Developer Admin', tickets: 100, facilityName: 'Dev Office', pin: 'dev456' },
+    'ADMIN001': { id: 'ADMIN001', name: 'Admin User', tickets: 100, facilityName: 'Admin Office', pin: 'admin123', status: 'working' },
+    'DEV007': { id: 'DEV007', name: 'Developer Admin', tickets: 100, facilityName: 'Dev Office', pin: 'dev456', status: 'working' },
   },
 };
 
@@ -572,6 +572,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
           tickets: userData.tickets,
           facilityName: userData.facilityName,
           pin: userData.pin,
+          status: userData.status || 'working',
         };
       });
 
@@ -827,6 +828,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
               facilityName: user.facilityName,
               pin: user.pin,
               profilePictureUrl: user.profilePictureUrl,
+              status: user.status || 'working',
             };
 
             // Map by Firebase document ID (used for winners)
@@ -844,8 +846,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
           // Ensure admin users are always included in the mapping
           const adminUsers = {
-            'ADMIN001': { id: 'ADMIN001', name: 'Admin User', tickets: 100, facilityName: 'Admin Office', pin: 'admin123' },
-            'DEV007': { id: 'DEV007', name: 'Developer Admin', tickets: 100, facilityName: 'Dev Office', pin: 'dev456' },
+            'ADMIN001': { id: 'ADMIN001', name: 'Admin User', tickets: 100, facilityName: 'Admin Office', pin: 'admin123', status: 'working' },
+            'DEV007': { id: 'DEV007', name: 'Developer Admin', tickets: 100, facilityName: 'Dev Office', pin: 'dev456', status: 'working' },
           };
 
           // Add admin users to the mapping
@@ -954,6 +956,7 @@ export const useFirebaseLogin = () => {
         name: userName,
         totalInitialTickets: firebaseUser.tickets,
         allocatedTickets: {},
+        status: firebaseUser.status || 'working',
         profilePictureUrl: firebaseUser.profilePictureUrl,
       };
       
