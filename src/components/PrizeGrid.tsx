@@ -1,4 +1,5 @@
 "use client";
+import { useMemo } from "react";
 import { useAppContext } from "@/context/AppContext";
 import PrizeCard from "./PrizeCard";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -7,6 +8,25 @@ import { Info } from "lucide-react";
 export default function PrizeGrid() {
   const { state } = useAppContext();
   const { prizes, isAuctionOpen, winners, prizeTiers } = state;
+
+  const { groupedPrizes, ungroupedPrizes, winnerCount } = useMemo(() => {
+    const sortedTiers = [...prizeTiers].sort((a, b) => a.order - b.order);
+
+    const grouped = sortedTiers
+      .map((tier) => ({
+        tier,
+        prizes: prizes.filter((prize) => prize.tierId === tier.id),
+      }))
+      .filter((group) => group.prizes.length > 0);
+
+    const ungrouped = prizes.filter((prize) => !prize.tierId);
+
+    return {
+      groupedPrizes: grouped,
+      ungroupedPrizes: ungrouped,
+      winnerCount: Object.keys(winners).length,
+    };
+  }, [prizes, prizeTiers, winners]);
 
   if (prizes.length === 0) {
     return (
@@ -22,7 +42,7 @@ export default function PrizeGrid() {
 
   return (
     <div>
-      {!isAuctionOpen && Object.keys(winners).length > 0 && (
+      {!isAuctionOpen && winnerCount > 0 && (
         <Alert className="mb-6 bg-success/10 border-success text-success-foreground">
           <Info className="h-4 w-4 text-success" />
           <AlertTitle className="font-headline text-success">Auction Closed & Winners Announced!</AlertTitle>
@@ -31,7 +51,7 @@ export default function PrizeGrid() {
           </AlertDescription>
         </Alert>
       )}
-       {!isAuctionOpen && Object.keys(winners).length === 0 && (
+      {!isAuctionOpen && winnerCount === 0 && (
         <Alert className="mb-6">
           <Info className="h-4 w-4" />
           <AlertTitle className="font-headline">Auction Closed</AlertTitle>
@@ -42,47 +62,35 @@ export default function PrizeGrid() {
       )}
       <div className="space-y-8">
         {/* Prizes grouped by tier */}
-        {prizeTiers
-          .sort((a, b) => a.order - b.order)
-          .map((tier) => {
-            const tierPrizes = prizes.filter(prize => prize.tierId === tier.id);
-            if (tierPrizes.length === 0) return null;
-            
-            return (
-              <div key={tier.id} className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div 
-                    className="w-4 h-4 rounded-full"
-                    style={{ backgroundColor: tier.color }}
-                  />
-                  <h2 className="text-2xl font-bold">{tier.name}</h2>
-                  <p className="text-muted-foreground">{tier.description}</p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
-                  {tierPrizes.map((prize) => (
-                    <PrizeCard key={prize.id} prize={prize} />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        
-        {/* Ungrouped prizes */}
-        {(() => {
-          const ungroupedPrizes = prizes.filter(prize => !prize.tierId);
-          if (ungroupedPrizes.length === 0) return null;
-          
-          return (
-            <div className="space-y-4">
-              <h2 className="text-2xl font-bold">Other Prizes</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
-                {ungroupedPrizes.map((prize) => (
-                  <PrizeCard key={prize.id} prize={prize} />
-                ))}
-              </div>
+        {groupedPrizes.map(({ tier, prizes: tierPrizes }) => (
+          <div key={tier.id} className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-4 h-4 rounded-full"
+                style={{ backgroundColor: tier.color }}
+              />
+              <h2 className="text-2xl font-bold">{tier.name}</h2>
+              <p className="text-muted-foreground">{tier.description}</p>
             </div>
-          );
-        })()}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
+              {tierPrizes.map((prize) => (
+                <PrizeCard key={prize.id} prize={prize} />
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {/* Ungrouped prizes */}
+        {ungroupedPrizes.length > 0 && (
+          <div className="space-y-4">
+            <h2 className="text-2xl font-bold">Other Prizes</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
+              {ungroupedPrizes.map((prize) => (
+                <PrizeCard key={prize.id} prize={prize} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
