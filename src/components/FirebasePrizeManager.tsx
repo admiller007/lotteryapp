@@ -11,11 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Trash2, Edit, Plus, RefreshCw, Trophy, Target } from 'lucide-react';
 import { 
-  addPrize, 
-  getPrizes, 
-  updatePrize, 
-  deletePrize, 
+  addPrize,
+  getPrizes,
+  updatePrize,
+  deletePrize,
   convertFirebasePrizeToAppPrize,
+  uploadPrizeImage,
   addPrizeTier,
   getPrizeTiers,
   updatePrizeTier,
@@ -44,6 +45,8 @@ export default function FirebasePrizeManager() {
     imageUrl: '',
     tierId: 'no-tier'
   });
+  const [prizeImageFile, setPrizeImageFile] = useState<File | null>(null);
+  const [prizeImagePreview, setPrizeImagePreview] = useState('');
   const [tierFormData, setTierFormData] = useState({
     name: '',
     description: '',
@@ -111,17 +114,41 @@ export default function FirebasePrizeManager() {
     loadAll();
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (prizeImagePreview && prizeImagePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(prizeImagePreview);
+      }
+    };
+  }, [prizeImagePreview]);
+
   const handlePrizeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
+      let imageUrlToSave = prizeFormData.imageUrl;
+
+      if (prizeImageFile) {
+        imageUrlToSave = await uploadPrizeImage(prizeImageFile);
+      }
+
+      if (!imageUrlToSave) {
+        toast({
+          title: "Image Required",
+          description: "Please upload an image for the prize.",
+          variant: "destructive"
+        });
+        setLoading(false);
+        return;
+      }
+
       if (editingPrize) {
         // Update existing prize
         await updatePrize(editingPrize.id!, {
           name: prizeFormData.name,
           description: prizeFormData.description,
-          imageUrl: prizeFormData.imageUrl,
+          imageUrl: imageUrlToSave,
           tierId: prizeFormData.tierId === 'no-tier' ? undefined : prizeFormData.tierId || undefined
         });
         toast({
@@ -133,7 +160,7 @@ export default function FirebasePrizeManager() {
         await addPrize({
           name: prizeFormData.name,
           description: prizeFormData.description,
-          imageUrl: prizeFormData.imageUrl,
+          imageUrl: imageUrlToSave,
           entries: [],
           totalTicketsInPrize: 0,
           tierId: prizeFormData.tierId === 'no-tier' ? undefined : prizeFormData.tierId || undefined
@@ -148,7 +175,9 @@ export default function FirebasePrizeManager() {
       setIsPrizeDialogOpen(false);
       setEditingPrize(null);
       setPrizeFormData({ name: '', description: '', imageUrl: '', tierId: 'no-tier' });
-      
+      setPrizeImageFile(null);
+      setPrizeImagePreview('');
+
     } catch (error: any) {
       console.error('Error saving prize:', error);
       toast({
@@ -259,12 +288,16 @@ export default function FirebasePrizeManager() {
       imageUrl: prize.imageUrl,
       tierId: prize.tierId || 'no-tier'
     });
+    setPrizeImageFile(null);
+    setPrizeImagePreview(prize.imageUrl || '');
     setIsPrizeDialogOpen(true);
   };
 
   const openAddPrizeDialog = () => {
     setEditingPrize(null);
     setPrizeFormData({ name: '', description: '', imageUrl: '', tierId: 'no-tier' });
+    setPrizeImageFile(null);
+    setPrizeImagePreview('');
     setIsPrizeDialogOpen(true);
   };
 
@@ -355,15 +388,47 @@ export default function FirebasePrizeManager() {
                       </div>
                       
                       <div className="space-y-2">
-                        <Label htmlFor="prizeImageUrl">Image URL</Label>
+                        <Label htmlFor="prizeImage">Prize Image</Label>
                         <Input
-                          id="prizeImageUrl"
-                          type="url"
-                          value={prizeFormData.imageUrl}
-                          onChange={(e) => setPrizeFormData(prev => ({ ...prev, imageUrl: e.target.value }))}
-                          required
-                          placeholder="Enter image URL"
+                          id="prizeImage"
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            if (!file.type.startsWith('image/')) {
+                              toast({
+                                title: "Invalid file",
+                                description: "Please upload an image file (JPEG or PNG).",
+                                variant: "destructive"
+                              });
+                              return;
+                            }
+
+                            if (prizeImagePreview && prizeImagePreview.startsWith('blob:')) {
+                              URL.revokeObjectURL(prizeImagePreview);
+                            }
+
+                            setPrizeImageFile(file);
+                            setPrizeImagePreview(URL.createObjectURL(file));
+                          }}
+                          className="cursor-pointer"
                         />
+                        <p className="text-xs text-muted-foreground">
+                          Upload a JPEG or PNG. If you do not pick a new file when editing, the current image will remain.
+                        </p>
+                        {(prizeImagePreview || prizeFormData.imageUrl) && (
+                          <div className="mt-2 space-y-2">
+                            <p className="text-xs text-muted-foreground">Preview</p>
+                            <div className="rounded-md border p-2 bg-muted/40">
+                              <img
+                                src={prizeImagePreview || prizeFormData.imageUrl}
+                                alt={prizeFormData.name || 'Prize preview'}
+                                className="w-full h-auto max-h-48 object-contain"
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
                       
                       <div className="space-y-2">

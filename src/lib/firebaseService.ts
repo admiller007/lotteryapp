@@ -67,6 +67,18 @@ export interface FirebaseAllocation {
   timestamp: string;
 }
 
+export const uploadPrizeImage = async (file: File): Promise<string> => {
+  try {
+    const dataURL = await fileToDataURL(file);
+    const compressedDataURL = await compressImage(dataURL, 0.82, 1200, 1200);
+
+    return compressedDataURL;
+  } catch (error) {
+    console.error('Error processing prize image file:', error);
+    throw error;
+  }
+};
+
 // Prize Management
 export const addPrize = async (prize: Omit<FirebasePrize, 'id' | 'createdAt'>): Promise<string> => {
   try {
