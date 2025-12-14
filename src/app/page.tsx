@@ -72,6 +72,12 @@ export default function HomePage() {
 
     if (!state.currentUser) {
       router.push('/login');
+    } else if (state.currentUser.status === 'inactive') {
+      // Redirect inactive users to the inactive page (except for admin users)
+      const isAdmin = state.currentUser.employeeId && ['ADMIN001', 'DEV007'].includes(state.currentUser.employeeId);
+      if (!isAdmin) {
+        router.push('/inactive');
+      }
     }
   }, [state.currentUser, router]);
 

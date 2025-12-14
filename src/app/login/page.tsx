@@ -39,6 +39,14 @@ export default function LoginPage() {
   React.useEffect(() => {
     if (state.lastAction?.type === 'LOGIN_SUCCESS') {
       setIsLoading(false);
+
+      // Check user status - if inactive, redirect to inactive page (except for admin users)
+      const isAdmin = state.currentUser?.employeeId && ['ADMIN001', 'DEV007'].includes(state.currentUser.employeeId);
+      if (state.currentUser?.status === 'inactive' && !isAdmin) {
+        router.push('/inactive');
+        return;
+      }
+
       // Check if user has a profile picture, if not redirect to profile picture page
       if (state.currentUser && !state.currentUser.profilePictureUrl) {
         router.push('/profile-picture');

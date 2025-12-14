@@ -26,7 +26,7 @@ export interface AppUser {
   name: string; // Combined from firstName and lastName
   totalInitialTickets: number;
   allocatedTickets: Record<string, number>; // prizeId -> count
-  status?: 'working' | 'at_party';
+  status?: 'inactive' | 'working' | 'at_party';
   profilePictureUrl?: string; // Optional profile picture URL
 }
 
@@ -36,7 +36,7 @@ export interface AuctionContextState {
   currentUser: AppUser | null; // Can be null if no user is logged in
   isAuctionOpen: boolean;
   winners: Record<string, string>;
-  allUsers: Record<string, { id: string; name: string; tickets?: number; facilityName?: string; pin?: string; profilePictureUrl?: string; status?: 'working' | 'at_party' }>;
+  allUsers: Record<string, { id: string; name: string; tickets?: number; facilityName?: string; pin?: string; profilePictureUrl?: string; status?: 'inactive' | 'working' | 'at_party' }>;
   lastAction?: {
     type: string;
     message?: string;
@@ -69,7 +69,7 @@ export type AuctionAction =
   | { type: 'DELETE_PRIZE_TIER'; payload: { tierId: string } }
   | { type: 'SYNC_USER_ALLOCATIONS'; payload: { userId: string; allocatedTickets: Record<string, number> } }
   | { type: 'LOAD_USER_ALLOCATIONS'; payload: { userId: string; allocatedTickets: Record<string, number> } }
-  | { type: 'UPLOAD_USERS'; payload: Array<{ firstName: string; lastName: string; employeeId: string; facilityName: string; tickets: number; pin: string; status?: 'working' | 'at_party' }> }
+  | { type: 'UPLOAD_USERS'; payload: Array<{ firstName: string; lastName: string; employeeId: string; facilityName: string; tickets: number; pin: string; status?: 'inactive' | 'working' | 'at_party' }> }
   | { type: 'UPDATE_PROFILE_PICTURE'; payload: { userId: string; profilePictureUrl: string } }
   | { type: 'SYNC_WINNERS_FROM_FIREBASE'; payload: Record<string, string> }
-  | { type: 'UPSERT_ALL_USERS'; payload: Record<string, { id: string; name: string; tickets?: number; facilityName?: string; pin?: string; profilePictureUrl?: string; status?: 'working' | 'at_party' }> };
+  | { type: 'UPSERT_ALL_USERS'; payload: Record<string, { id: string; name: string; tickets?: number; facilityName?: string; pin?: string; profilePictureUrl?: string; status?: 'inactive' | 'working' | 'at_party' }> };

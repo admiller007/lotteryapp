@@ -29,7 +29,7 @@ export interface FirebaseUser {
   facilityName: string;
   tickets: number;
   pin: string;
-  status?: 'working' | 'at_party';
+  status?: 'inactive' | 'working' | 'at_party';
   profilePictureUrl?: string;
   createdAt?: Timestamp;
 }
@@ -132,7 +132,7 @@ export const addUser = async (user: Omit<FirebaseUser, 'id' | 'createdAt'>): Pro
   try {
     const docRef = await addDoc(collection(db, 'users'), {
       ...user,
-      status: user.status || 'working',
+      status: user.status || 'inactive',
       createdAt: Timestamp.now()
     });
     return docRef.id;
@@ -151,7 +151,7 @@ export const addUsers = async (users: Omit<FirebaseUser, 'id' | 'createdAt'>[]):
       const docRef = doc(collection(db, 'users'));
       batch.set(docRef, {
         ...user,
-        status: user.status || 'working',
+        status: user.status || 'inactive',
         createdAt: Timestamp.now()
       });
       userRefs.push(docRef.id);

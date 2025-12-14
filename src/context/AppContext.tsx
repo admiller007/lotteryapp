@@ -572,7 +572,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
           tickets: userData.tickets,
           facilityName: userData.facilityName,
           pin: userData.pin,
-          status: userData.status || 'working',
+          status: userData.status || 'inactive',
         };
       });
 
@@ -828,7 +828,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
               facilityName: user.facilityName,
               pin: user.pin,
               profilePictureUrl: user.profilePictureUrl,
-              status: user.status || 'working',
+              status: user.status || 'inactive',
             };
 
             // Map by Firebase document ID (used for winners)
@@ -956,7 +956,7 @@ export const useFirebaseLogin = () => {
         name: userName,
         totalInitialTickets: firebaseUser.tickets,
         allocatedTickets: {},
-        status: firebaseUser.status || 'working',
+        status: firebaseUser.status || 'inactive',
         profilePictureUrl: firebaseUser.profilePictureUrl,
       };
       

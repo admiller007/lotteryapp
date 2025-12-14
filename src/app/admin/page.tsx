@@ -67,10 +67,11 @@ export default function AdminPage() {
     facilityName: '',
     tickets: '',
     pin: '',
-    status: 'working' as 'working' | 'at_party',
+    status: 'inactive' as 'inactive' | 'working' | 'at_party',
   });
   const [creatingUser, setCreatingUser] = useState(false);
-  const [userEdits, setUserEdits] = useState<Record<string, { tickets: number; status: 'working' | 'at_party' }>>({});
+  const [userEdits, setUserEdits] = useState<Record<string, { tickets: number; status: 'inactive' | 'working' | 'at_party' }>>({});
+  const [bulkUpdating, setBulkUpdating] = useState(false);
 
   const ADMIN_IDS = ['ADMIN001', 'DEV007'];
 
@@ -79,7 +80,7 @@ export default function AdminPage() {
     setLoadingUsers(true);
     try {
       const users = await getUsers();
-      setFirebaseUsers(users.map(u => ({ ...u, status: u.status || 'working' })));
+      setFirebaseUsers(users.map(u => ({ ...u, status: u.status || 'inactive' })));
     } catch (error: any) {
       console.error('Error loading Firebase users:', error);
       toast({
@@ -125,7 +126,7 @@ export default function AdminPage() {
       facilityName: '',
       tickets: '',
       pin: '',
-      status: 'working',
+      status: 'inactive',
     });
   };
 
@@ -168,20 +169,20 @@ export default function AdminPage() {
 
   const handleUserEditChange = (userId: string, field: 'tickets' | 'status', value: string | number) => {
     setUserEdits((prev) => {
-      const existing = prev[userId] || { tickets: firebaseUsers.find(u => u.id === userId)?.tickets || 0, status: firebaseUsers.find(u => u.id === userId)?.status || 'working' };
+      const existing = prev[userId] || { tickets: firebaseUsers.find(u => u.id === userId)?.tickets || 0, status: firebaseUsers.find(u => u.id === userId)?.status || 'inactive' };
       return {
         ...prev,
         [userId]: {
           ...existing,
           [field]: field === 'tickets' ? Number(value) : value,
-        } as { tickets: number; status: 'working' | 'at_party' },
+        } as { tickets: number; status: 'inactive' | 'working' | 'at_party' },
       };
     });
   };
 
   const handleSaveUserEdits = async (user: FirebaseUser) => {
     if (!user.id) return;
-    const edits = userEdits[user.id] || { tickets: user.tickets, status: (user.status as 'working' | 'at_party') || 'working' };
+    const edits = userEdits[user.id] || { tickets: user.tickets, status: (user.status as 'inactive' | 'working' | 'at_party') || 'inactive' };
     const payload: Partial<FirebaseUser> = {};
     const ticketsNumber = Number(edits.tickets);
     if (isNaN(ticketsNumber) || ticketsNumber < 0) {
@@ -210,6 +211,48 @@ export default function AdminPage() {
     } catch (error: any) {
       console.error('Failed to update user:', error);
       toast({ title: "Update Failed", description: error.message || 'Could not update user', variant: "destructive" });
+    }
+  };
+
+  const handleBulkUpdateToInactive = async () => {
+    setBulkUpdating(true);
+    try {
+      let updated = 0;
+      let errors = 0;
+
+      // Filter out admin users from bulk update
+      const usersToUpdate = firebaseUsers.filter(user =>
+        !ADMIN_IDS.includes(user.employeeId) && user.status !== 'inactive'
+      );
+
+      for (const user of usersToUpdate) {
+        try {
+          if (user.id) {
+            await updateUser(user.id, { status: 'inactive' });
+            updated++;
+          }
+        } catch (error) {
+          console.error(`Failed to update ${user.firstName} ${user.lastName}:`, error);
+          errors++;
+        }
+      }
+
+      await loadFirebaseUsers(); // Refresh the list
+
+      toast({
+        title: "Bulk Update Complete",
+        description: `Updated ${updated} users to inactive. ${errors > 0 ? `${errors} errors occurred.` : ''}`,
+        variant: errors > 0 ? "destructive" : "default"
+      });
+    } catch (error: any) {
+      console.error('Bulk update failed:', error);
+      toast({
+        title: "Bulk Update Failed",
+        description: error.message || 'Failed to update users',
+        variant: "destructive"
+      });
+    } finally {
+      setBulkUpdating(false);
     }
   };
 
@@ -820,6 +863,7 @@ export default function AdminPage() {
                         <SelectValue placeholder="Select status" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="inactive">Inactive</SelectItem>
                         <SelectItem value="working">Working</SelectItem>
                         <SelectItem value="at_party">At Party</SelectItem>
                       </SelectContent>
@@ -921,6 +965,14 @@ export default function AdminPage() {
                       <RefreshCcw className={`h-4 w-4 mr-2 ${loadingUsers ? 'animate-spin' : ''}`} />
                       Refresh
                     </Button>
+                    <Button
+                      onClick={handleBulkUpdateToInactive}
+                      variant="destructive"
+                      size="sm"
+                      disabled={bulkUpdating}
+                    >
+                      {bulkUpdating ? 'Updating...' : 'Set All Inactive'}
+                    </Button>
                   </div>
                 </div>
                 <div className="max-h-60 overflow-y-auto">
@@ -951,7 +1003,7 @@ export default function AdminPage() {
                               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                 <span>{user.facilityName}</span>
                                 <span>Tickets: {user.tickets}</span>
-                                <span>Status: {user.status === 'at_party' ? 'At Party' : 'Working'}</span>
+                                <span>Status: {user.status === 'at_party' ? 'At Party' : user.status === 'working' ? 'Working' : 'Inactive'}</span>
                               </div>
                             </div>
                           </div>
@@ -959,13 +1011,14 @@ export default function AdminPage() {
                             <div className="space-y-1">
                               <Label className="text-xs">Status</Label>
                               <Select
-                                value={(userEdits[user.id || '']?.status as 'working' | 'at_party') || user.status || 'working'}
+                                value={(userEdits[user.id || '']?.status as 'inactive' | 'working' | 'at_party') || user.status || 'inactive'}
                                 onValueChange={(val) => user.id && handleUserEditChange(user.id, 'status', val)}
                               >
                                 <SelectTrigger>
                                   <SelectValue placeholder="Status" />
                                 </SelectTrigger>
                                 <SelectContent>
+                                  <SelectItem value="inactive">Inactive</SelectItem>
                                   <SelectItem value="working">Working</SelectItem>
                                   <SelectItem value="at_party">At Party</SelectItem>
                                 </SelectContent>

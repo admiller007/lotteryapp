@@ -19,19 +19,55 @@ export default function PrizeCard({ prize }: PrizeCardProps) {
   const winner = winnerId ? allUsers[winnerId] : null;
   const isCurrentUserWinner = currentUser && winnerId === currentUser.id;
   const prizeTier = prize.tierId ? prizeTiers.find(tier => tier.id === prize.tierId) : null;
+  // Check if the image URL is from an allowed domain for Next.js Image
+  const isAllowedDomain = (url: string) => {
+    try {
+      const hostname = new URL(url).hostname;
+      const allowedDomains = [
+        'placehold.co',
+        'gstatic.com',
+        'accoladehc.com',
+        'images.unsplash.com',
+        'cdn.media.amplience.net',
+        'www.jbl.com',
+        'amazonaws.com',
+        'cloudfront.net'
+      ];
+
+      return allowedDomains.some(domain =>
+        hostname === domain ||
+        hostname.endsWith('.' + domain) ||
+        hostname.includes(domain)
+      );
+    } catch {
+      return false;
+    }
+  };
+
+  const imageUrl = prize.imageUrl || 'https://placehold.co/300x200.png';
+  const useNextImage = isAllowedDomain(imageUrl);
 
 
   return (
     <Card className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300">
       <CardHeader className="p-0 relative">
-        <Image
-          src={prize.imageUrl || 'https://placehold.co/300x200.png'}
-          alt={prize.name}
-          width={300}
-          height={200}
-          className="w-full h-auto object-contain"
-          data-ai-hint="prize item"
-        />
+        {useNextImage ? (
+          <Image
+            src={imageUrl}
+            alt={prize.name}
+            width={300}
+            height={200}
+            className="w-full h-auto object-contain"
+            data-ai-hint="prize item"
+          />
+        ) : (
+          <img
+            src={imageUrl}
+            alt={prize.name}
+            className="w-full h-48 object-contain"
+            data-ai-hint="prize item"
+          />
+        )}
         {isCurrentUserWinner && (
            <div className="absolute top-2 right-2 bg-success text-success-foreground p-2 rounded-md shadow-lg">
              <Trophy className="h-6 w-6 inline-block mr-1" />
