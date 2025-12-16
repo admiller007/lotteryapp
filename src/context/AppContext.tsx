@@ -4,6 +4,7 @@ import type { Dispatch, ReactNode } from 'react';
 import React, { createContext, useContext, useReducer, useMemo, useEffect } from 'react';
 import type { Prize, AppUser, AuctionContextState, AuctionAction, PrizeTier } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
+import { PARTY_CHECKIN_FLAG_KEY } from '@/lib/partyCheckIn';
 
 // Define Admin Employee IDs here. In a real app, this would come from a secure config.
 const ADMIN_EMPLOYEE_IDS = ['ADMIN001', 'DEV007']; // Example Admin IDs
@@ -65,11 +66,49 @@ const initialState: AuctionContextState = {
   currentUser: null, // No user logged in initially
   isAuctionOpen: true,
   winners: {},
+  pendingConflict: null,
+  drawsPaused: false,
   allUsers: {
     // Pre-populated admin users
     'ADMIN001': { id: 'ADMIN001', name: 'Admin User', tickets: 100, facilityName: 'Admin Office', pin: 'admin123', status: 'working' },
     'DEV007': { id: 'DEV007', name: 'Developer Admin', tickets: 100, facilityName: 'Dev Office', pin: 'dev456', status: 'working' },
   },
+};
+
+const buildDrawingPool = (prize: Prize, excludedUserIds: Set<string> = new Set<string>()) => {
+  const drawingPool: string[] = [];
+
+  prize.entries.forEach(entry => {
+    if (entry.numTickets <= 0) return;
+    if (excludedUserIds.has(entry.userId)) return;
+
+    for (let i = 0; i < entry.numTickets; i++) {
+      drawingPool.push(entry.userId);
+    }
+  });
+
+  return drawingPool;
+};
+
+const pickWinnerWithConflictCheck = (
+  prize: Prize,
+  currentWinners: Record<string, string>,
+  excludedUserIds: Set<string> = new Set<string>()
+) => {
+  const drawingPool = buildDrawingPool(prize, excludedUserIds);
+
+  if (drawingPool.length === 0) {
+    return { winnerId: null as string | null, conflictPrizeId: null as string | null };
+  }
+
+  const winnerIndex = Math.floor(Math.random() * drawingPool.length);
+  const winnerId = drawingPool[winnerIndex];
+  const conflictPrizeId =
+    Object.entries(currentWinners).find(
+      ([pId, uId]) => pId !== prize.id && uId === winnerId
+    )?.[0] || null;
+
+  return { winnerId, conflictPrizeId };
 };
 
 const AppContext = createContext<{
@@ -220,35 +259,61 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
     }
     case 'DRAW_WINNERS': {
       if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId) || !state.isAuctionOpen) return state;
+      if (state.pendingConflict) {
+        return {
+          ...state,
+          lastAction: { type: 'WINNER_CONFLICT_PENDING', message: 'Resolve the existing winner conflict before drawing more prizes.' },
+        };
+      }
 
-      const newWinners: Record<string, string> = {};
-      const usersWhoWon = new Set<string>();
+      const updatedWinners: Record<string, string> = { ...state.winners };
       const shuffledPrizes = [...state.prizes].sort(() => Math.random() - 0.5);
+      let conflict: { id: string; userId: string; userName?: string; existingPrizeId: string; newPrizeId: string } | null = null;
 
       for (const prize of shuffledPrizes) {
+        if (updatedWinners[prize.id]) continue; // Skip prizes that already have a winner
         if (prize.entries.length === 0) continue;
 
-        const drawingPool: string[] = [];
-        prize.entries.forEach(entry => {
-          for (let i = 0; i < entry.numTickets; i++) {
-            drawingPool.push(entry.userId);
+        const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, updatedWinners);
+
+        if (!winnerId) continue;
+
+        if (conflictPrizeId) {
+          conflict = {
+            id: `conflict-${Date.now()}`,
+            userId: winnerId,
+            userName: state.allUsers[winnerId]?.name,
+            existingPrizeId: conflictPrizeId,
+            newPrizeId: prize.id,
+          };
+          break;
+        }
+
+        updatedWinners[prize.id] = winnerId;
+      }
+
+      if (conflict) {
+        import('@/lib/firebaseService').then(async ({ saveWinners }) => {
+          try {
+            await saveWinners(updatedWinners);
+          } catch (error) {
+            console.error('Failed to save winners before conflict resolution:', error);
           }
         });
-        
-        const eligiblePool = drawingPool.filter(userId => !usersWhoWon.has(userId));
 
-        if (eligiblePool.length > 0) {
-          const winnerIndex = Math.floor(Math.random() * eligiblePool.length);
-          const winnerId = eligiblePool[winnerIndex];
-          newWinners[prize.id] = winnerId;
-          usersWhoWon.add(winnerId);
-        }
+        return {
+          ...state,
+          winners: updatedWinners,
+          pendingConflict: conflict,
+          drawsPaused: true,
+          lastAction: { type: 'WINNER_CONFLICT', message: `${conflict.userName || 'Selected user'} already holds another prize. Resolve the conflict to continue.` },
+        };
       }
 
       // Save all winners to Firebase
       import('@/lib/firebaseService').then(async ({ saveWinners }) => {
         try {
-          await saveWinners(newWinners);
+          await saveWinners(updatedWinners);
         } catch (error) {
           console.error('Failed to save all winners to Firebase:', error);
         }
@@ -256,13 +321,21 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
 
       return {
         ...state,
-        winners: newWinners,
+        winners: updatedWinners,
         isAuctionOpen: false,
+        pendingConflict: null,
+        drawsPaused: false,
         lastAction: { type: 'WINNERS_DRAWN' },
       };
     }
     case 'DRAW_SINGLE_WINNER': {
       if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state;
+      if (state.pendingConflict) {
+        return {
+          ...state,
+          lastAction: { type: 'WINNER_CONFLICT_PENDING', message: 'Resolve the existing winner conflict before drawing more prizes.' },
+        };
+      }
 
       const { prizeId } = action.payload;
       const prize = state.prizes.find(p => p.id === prizeId);
@@ -281,28 +354,31 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         };
       }
 
-      // Create drawing pool for this prize
-      const drawingPool: string[] = [];
-      prize.entries.forEach(entry => {
-        for (let i = 0; i < entry.numTickets; i++) {
-          drawingPool.push(entry.userId);
-        }
-      });
+      const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, state.winners);
 
-      // Filter out users who already won other prizes
-      const usersWhoWon = new Set(Object.values(state.winners));
-      const eligiblePool = drawingPool.filter(userId => !usersWhoWon.has(userId));
-
-      if (eligiblePool.length === 0) {
+      if (!winnerId) {
         return {
           ...state,
-          lastAction: { type: 'ERROR', message: 'No eligible participants for this prize (all may have won other prizes).' },
+          lastAction: { type: 'ERROR', message: 'No eligible participants for this prize.' },
         };
       }
 
-      // Draw the winner
-      const winnerIndex = Math.floor(Math.random() * eligiblePool.length);
-      const winnerId = eligiblePool[winnerIndex];
+      if (conflictPrizeId) {
+        const conflict = {
+          id: `conflict-${Date.now()}`,
+          userId: winnerId,
+          userName: state.allUsers[winnerId]?.name,
+          existingPrizeId: conflictPrizeId,
+          newPrizeId: prize.id,
+        };
+        return {
+          ...state,
+          pendingConflict: conflict,
+          drawsPaused: true,
+          lastAction: { type: 'WINNER_CONFLICT', message: `${conflict.userName || 'Selected user'} already holds another prize. Resolve the conflict to continue.` },
+        };
+      }
+
       const winnerName = state.allUsers[winnerId]?.name || 'Unknown User';
 
       // Save winner to Firebase
@@ -317,6 +393,8 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       return {
         ...state,
         winners: { ...state.winners, [prizeId]: winnerId },
+        pendingConflict: null,
+        drawsPaused: false,
         lastAction: { type: 'SINGLE_WINNER_DRAWN', winnerName, prizeName: prize.name },
       };
     }
@@ -350,6 +428,11 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
     case 'REDRAW_PRIZE_WINNER': {
       if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId) || state.isAuctionOpen) {
         toast({ title: "Action Denied", description: "Admin login required or auction must be closed.", variant: "destructive" });
+        return state;
+      }
+
+      if (state.pendingConflict) {
+        toast({ title: "Resolve Conflict First", description: "Finish the pending winner conflict before redrawing.", variant: "destructive" });
         return state;
       }
 
@@ -468,6 +551,12 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
     }
     case 'DRAW_TIER_WINNERS': {
       if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state;
+      if (state.pendingConflict) {
+        return {
+          ...state,
+          lastAction: { type: 'WINNER_CONFLICT_PENDING', message: 'Resolve the existing winner conflict before drawing more prizes.' },
+        };
+      }
       
       const { tierId } = action.payload;
       const tierPrizes = state.prizes.filter(prize => prize.tierId === tierId);
@@ -480,28 +569,47 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       }
       
       const newWinners = { ...state.winners };
-      const usersWhoWon = new Set(Object.values(state.winners));
       const shuffledPrizes = [...tierPrizes].sort(() => Math.random() - 0.5);
-      
+      let conflict: { id: string; userId: string; userName?: string; existingPrizeId: string; newPrizeId: string } | null = null;
+
       for (const prize of shuffledPrizes) {
         if (prize.entries.length === 0) continue;
         if (newWinners[prize.id]) continue; // Skip if already has winner
-        
-        const drawingPool: string[] = [];
-        prize.entries.forEach(entry => {
-          for (let i = 0; i < entry.numTickets; i++) {
-            drawingPool.push(entry.userId);
+
+        const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, newWinners);
+
+        if (!winnerId) continue;
+
+        if (conflictPrizeId) {
+          conflict = {
+            id: `conflict-${Date.now()}`,
+            userId: winnerId,
+            userName: state.allUsers[winnerId]?.name,
+            existingPrizeId: conflictPrizeId,
+            newPrizeId: prize.id,
+          };
+          break;
+        }
+
+        newWinners[prize.id] = winnerId;
+      }
+
+      if (conflict) {
+        import('@/lib/firebaseService').then(async ({ saveWinners }) => {
+          try {
+            await saveWinners(newWinners);
+          } catch (error) {
+            console.error('Failed to save winners before resolving conflict:', error);
           }
         });
-        
-        const eligiblePool = drawingPool.filter(userId => !usersWhoWon.has(userId));
-        
-        if (eligiblePool.length > 0) {
-          const winnerIndex = Math.floor(Math.random() * eligiblePool.length);
-          const winnerId = eligiblePool[winnerIndex];
-          newWinners[prize.id] = winnerId;
-          usersWhoWon.add(winnerId);
-        }
+
+        return {
+          ...state,
+          winners: newWinners,
+          pendingConflict: conflict,
+          drawsPaused: true,
+          lastAction: { type: 'WINNER_CONFLICT', message: `${conflict.userName || 'Selected user'} already holds another prize. Resolve the conflict to continue.` },
+        };
       }
 
       // Save all winners to Firebase
@@ -517,7 +625,63 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       return {
         ...state,
         winners: newWinners,
+        pendingConflict: null,
+        drawsPaused: false,
         lastAction: { type: 'TIER_WINNERS_DRAWN', message: `Winners drawn for ${tier?.name || 'tier'}` },
+      };
+    }
+    case 'RESOLVE_WINNER_CONFLICT': {
+      const conflict = state.pendingConflict;
+      if (!conflict || conflict.id !== action.payload.conflictId) return state;
+
+      const { keepPrizeId, dropPrizeId, userId } = action.payload;
+      const updatedWinners = { ...state.winners };
+
+      // Ensure the kept prize is assigned to the user
+      updatedWinners[keepPrizeId] = userId;
+
+      // Vacate the dropped prize before redrawing
+      delete updatedWinners[dropPrizeId];
+
+      const dropPrize = state.prizes.find(p => p.id === dropPrizeId);
+      let nextConflict: { id: string; userId: string; userName?: string; existingPrizeId: string; newPrizeId: string } | null = null;
+
+      if (dropPrize && dropPrize.entries.some(entry => entry.numTickets > 0)) {
+        const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(
+          dropPrize,
+          updatedWinners,
+          new Set([userId])
+        );
+
+        if (winnerId && !conflictPrizeId) {
+          updatedWinners[dropPrizeId] = winnerId;
+        } else if (winnerId && conflictPrizeId) {
+          nextConflict = {
+            id: `conflict-${Date.now()}`,
+            userId: winnerId,
+            userName: state.allUsers[winnerId]?.name,
+            existingPrizeId: conflictPrizeId,
+            newPrizeId: dropPrizeId,
+          };
+        }
+      }
+
+      import('@/lib/firebaseService').then(async ({ saveWinners }) => {
+        try {
+          await saveWinners(updatedWinners);
+        } catch (error) {
+          console.error('Failed to save conflict resolution winners to Firebase:', error);
+        }
+      });
+
+      return {
+        ...state,
+        winners: updatedWinners,
+        pendingConflict: nextConflict,
+        drawsPaused: !!nextConflict,
+        lastAction: nextConflict
+          ? { type: 'WINNER_CONFLICT', message: `${nextConflict.userName || 'Selected user'} already holds another prize. Resolve the conflict to continue.` }
+          : { type: 'CONFLICT_RESOLVED', message: 'Winner conflict resolved and prize redrawn.' },
       };
     }
     case 'LOAD_USER_ALLOCATIONS': {
@@ -603,6 +767,8 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       return {
         ...state,
         winners: action.payload,
+        pendingConflict: null,
+        drawsPaused: false,
       };
     }
     default:
@@ -651,7 +817,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             winners: {}, // Always start with empty winners - Firebase will populate
             allUsers: normalizedUsers,
             currentUser: parsed.currentUser || null,
-            prizeTiers: parsed.prizeTiers || initialPrizeTiers
+            prizeTiers: parsed.prizeTiers || initialPrizeTiers,
+            pendingConflict: null,
+            drawsPaused: false,
           };
           
           if (parsed.currentUser) {
@@ -780,7 +948,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         console.error('Error saving state to localStorage:', error);
       }
     }
-  }, [state.currentUser, state.prizes, state.winners, state.isAuctionOpen, state.allUsers, state.prizeTiers]);
+  }, [state.currentUser, state.prizes, state.winners, state.isAuctionOpen, state.allUsers, state.prizeTiers, state.pendingConflict, state.drawsPaused]);
 
   // Load Firebase data on mount and set up real-time listeners
   React.useEffect(() => {
@@ -933,7 +1101,7 @@ export const useFirebaseLogin = () => {
     console.log('Login attempt:', { firstName, lastName, facilityName, pin, userName });
     
     try {
-      const { getUserByCredentials } = await import('@/lib/firebaseService');
+      const { getUserByCredentials, updateUser } = await import('@/lib/firebaseService');
       const firebaseUser = await getUserByCredentials(firstName, lastName, facilityName, pin);
       
       if (!firebaseUser) {
@@ -944,9 +1112,30 @@ export const useFirebaseLogin = () => {
         });
         return;
       }
-      
       console.log('Firebase user found:', firebaseUser);
       
+      // If the user came from the party check-in link/QR, mark them as at_party
+      const partyCheckInRequested = typeof window !== 'undefined' && localStorage.getItem(PARTY_CHECKIN_FLAG_KEY) === 'true';
+      let finalStatus: 'inactive' | 'working' | 'at_party' = (firebaseUser.status as any) || 'inactive';
+
+      if (partyCheckInRequested && finalStatus !== 'at_party') {
+        try {
+          if (firebaseUser.id) {
+            await updateUser(firebaseUser.id, { status: 'at_party' });
+          }
+          finalStatus = 'at_party';
+        } catch (statusError) {
+          console.error('Failed to update user status to at_party:', statusError);
+        } finally {
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem(PARTY_CHECKIN_FLAG_KEY);
+          }
+        }
+      } else if (partyCheckInRequested && typeof window !== 'undefined') {
+        // Clean up intent flag even if already at_party
+        localStorage.removeItem(PARTY_CHECKIN_FLAG_KEY);
+      }
+
       const newUser: AppUser = {
         id: firebaseUser.id || firebaseUser.employeeId,
         firstName: firebaseUser.firstName,
@@ -956,7 +1145,7 @@ export const useFirebaseLogin = () => {
         name: userName,
         totalInitialTickets: firebaseUser.tickets,
         allocatedTickets: {},
-        status: firebaseUser.status || 'inactive',
+        status: finalStatus,
         profilePictureUrl: firebaseUser.profilePictureUrl,
       };
       
@@ -975,3 +1164,6 @@ export const useFirebaseLogin = () => {
   
   return { loginWithFirebase };
 };
+
+// Exported for test harnesses
+export { auctionReducer, buildDrawingPool, pickWinnerWithConflictCheck, initialState };
