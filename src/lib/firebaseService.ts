@@ -259,27 +259,45 @@ export const resetAuctionData = async (): Promise<void> => {
 };
 
 export const getUserByCredentials = async (
-  firstName: string, 
-  lastName: string, 
-  facilityName: string, 
+  firstName: string,
+  lastName: string,
+  facilityName: string,
   pin: string
 ): Promise<FirebaseUser | null> => {
   try {
-    const q = query(
-      collection(db, 'users'),
-      where('firstName', '==', firstName),
-      where('lastName', '==', lastName),
-      where('facilityName', '==', facilityName),
-      where('pin', '==', pin)
-    );
-    
-    const querySnapshot = await getDocs(q);
-    
+    const normalize = (value: string) => value.trim().toLowerCase();
+
+    // PIN must match exactly, but make the other fields case-insensitive
+    const pinMatchQuery = query(collection(db, 'users'), where('pin', '==', pin));
+
+    // Firestore doesn't support case-insensitive queries, so we query by PIN and
+    // then filter the name/facility locally using normalized comparisons.
+    const querySnapshot = await getDocs(pinMatchQuery);
+
     if (querySnapshot.empty) {
       return null;
     }
-    
-    const userDoc = querySnapshot.docs[0];
+
+    const normalizedFirstName = normalize(firstName);
+    const normalizedLastName = normalize(lastName);
+    const normalizedFacilityName = normalize(facilityName);
+
+    const userDoc = querySnapshot.docs.find((doc) => {
+      const data = doc.data() as FirebaseUser;
+      return (
+        data.firstName &&
+        data.lastName &&
+        data.facilityName &&
+        normalize(data.firstName) === normalizedFirstName &&
+        normalize(data.lastName) === normalizedLastName &&
+        normalize(data.facilityName) === normalizedFacilityName
+      );
+    });
+
+    if (!userDoc) {
+      return null;
+    }
+
     return {
       id: userDoc.id,
       ...userDoc.data()
