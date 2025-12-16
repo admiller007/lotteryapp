@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import TicketAllocator from './TicketAllocator';
 import { useAppContext } from '@/context/AppContext';
-import { Trophy, Ticket } from 'lucide-react';
+import { Trophy } from 'lucide-react';
 
 interface PrizeCardProps {
   prize: Prize;
@@ -95,11 +95,6 @@ export default function PrizeCard({ prize }: PrizeCardProps) {
         <CardDescription className="text-sm text-muted-foreground mb-3">
           {prize.description}
         </CardDescription>
-        <div className="flex items-center text-sm text-muted-foreground">
-          <Ticket className="h-4 w-4 mr-1 text-primary" />
-          <span>Total Tickets Entered: </span>
-          <Badge variant="secondary" className="ml-1">{prize.totalTicketsInPrize}</Badge>
-        </div>
       </CardContent>
       <CardFooter className="p-4 border-t">
         {isAuctionOpen && currentUser ? ( // Also check if currentUser exists
