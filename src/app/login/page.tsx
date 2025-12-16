@@ -89,7 +89,7 @@ export default function LoginPage() {
               <Input
                 id="firstName"
                 value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
+                onChange={(e) => setFirstName(e.target.value.trim())}
                 required
                 placeholder="Enter your first name"
               />
@@ -99,7 +99,7 @@ export default function LoginPage() {
               <Input
                 id="lastName"
                 value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
+                onChange={(e) => setLastName(e.target.value.trim())}
                 required
                 placeholder="Enter your last name"
               />
@@ -109,7 +109,7 @@ export default function LoginPage() {
               <Input
                 id="facilityName"
                 value={facilityName}
-                onChange={(e) => setFacilityName(e.target.value)}
+                onChange={(e) => setFacilityName(e.target.value.trim())}
                 required
                 placeholder="Enter your facility name"
               />
