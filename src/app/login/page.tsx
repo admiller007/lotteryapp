@@ -1,7 +1,7 @@
 
 "use client";
 import React, { useState, type FormEvent } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useAppContext, useFirebaseLogin } from '@/context/AppContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +15,6 @@ export default function LoginPage() {
   const { state } = useAppContext();
   const { loginWithFirebase } = useFirebaseLogin();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [facilityName, setFacilityName] = useState('');
@@ -26,11 +25,11 @@ export default function LoginPage() {
   // Capture At Party intent from the URL (QR code) and remember it for the login flow
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
-    const statusQuery = searchParams.get(PARTY_CHECKIN_QUERY_KEY);
+    const statusQuery = new URLSearchParams(window.location.search).get(PARTY_CHECKIN_QUERY_KEY);
     if (statusQuery === PARTY_CHECKIN_QUERY_VALUE) {
       localStorage.setItem(PARTY_CHECKIN_FLAG_KEY, 'true');
     }
-  }, [searchParams]);
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
