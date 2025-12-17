@@ -25,6 +25,9 @@ export default function WinnerDrawing() {
     winnerProfilePicture?: string;
   } | null>(null);
 
+  const getPrizeWinners = (prizeId: string) => winners[prizeId] || [];
+  const prizeHasAllWinners = (prize: Prize) => getPrizeWinners(prize.id).length >= (prize.numberOfWinners || 1);
+
   if (!isAdmin) {
     return (
       <Alert>
@@ -110,13 +113,14 @@ export default function WinnerDrawing() {
   };
 
   const handleRedrawPrizeWinner = (prizeId: string) => {
-    dispatch({ 
-      type: 'REDRAW_PRIZE_WINNER', 
-      payload: { prizeId } 
+    dispatch({
+      type: 'REDRAW_PRIZE_WINNER',
+      payload: { prizeId }
     });
-    
+
     const prize: Prize | undefined = prizes.find((p) => p.id === prizeId);
-    const winnerId = state.winners[prizeId];
+    const prizeWinners = getPrizeWinners(prizeId);
+    const winnerId = prizeWinners[prizeWinners.length - 1];
     const winner = winnerId ? state.allUsers[winnerId] : null;
     
     if (winner && prize) {
@@ -258,10 +262,11 @@ export default function WinnerDrawing() {
       // Find the prize we're drawing for
       const prizesInProgress = Object.keys(state.winners);
       for (const prizeId of prizesInProgress) {
-        const winnerId = state.winners[prizeId];
-        const winner = state.allUsers[winnerId];
+        const prizeWinnerIds = getPrizeWinners(prizeId);
+        const winnerId = prizeWinnerIds[prizeWinnerIds.length - 1];
+        const winner = winnerId ? state.allUsers[winnerId] : undefined;
         const prize = prizes.find(p => p.id === prizeId);
-        
+
         if (winner && prize && prize.name === currentDrawnWinner.prizeName) {
           setCurrentDrawnWinner({
             winnerName: winner.name,
@@ -275,11 +280,11 @@ export default function WinnerDrawing() {
   }, [state.winners, showSlotMachine, currentDrawnWinner, prizes, state.allUsers]);
 
   const prizesWithEntries = prizes.filter(p => p.entries.length > 0);
-  const prizesWithWinners = prizes.filter(p => winners[p.id]);
+  const prizesWithWinners = prizes.filter(p => getPrizeWinners(p.id).length > 0);
   const tiersWithPrizes = prizeTiers.filter(tier => {
     const tierPrizes = prizes.filter(p => p.tierId === tier.id && p.entries.length > 0);
-    // Only include tier if it has prizes with entries AND at least one prize doesn't have a winner yet
-    return tierPrizes.length > 0 && tierPrizes.some(p => !winners[p.id]);
+    // Only include tier if it has prizes with entries AND at least one prize doesn't have all winners yet
+    return tierPrizes.length > 0 && tierPrizes.some(p => !prizeHasAllWinners(p));
   });
 
   return (
@@ -370,7 +375,7 @@ export default function WinnerDrawing() {
                 <SelectContent>
                   {tiersWithPrizes.map((tier) => {
                     const tierPrizes = prizes.filter(p => p.tierId === tier.id && p.entries.length > 0);
-                    const prizesWithoutWinners = tierPrizes.filter(p => !winners[p.id]);
+                    const prizesWithoutWinners = tierPrizes.filter(p => !prizeHasAllWinners(p));
                     return (
                       <SelectItem key={tier.id} value={tier.id}>
                         <div className="flex items-center gap-2">
@@ -414,9 +419,11 @@ export default function WinnerDrawing() {
                 </SelectTrigger>
                 <SelectContent>
                   {prizesWithEntries
-                    .filter(prize => !winners[prize.id]) // Only show prizes without winners
+                    .filter(prize => !prizeHasAllWinners(prize)) // Only show prizes without winners
                     .map((prize) => {
                       const tier = prizeTiers.find(t => t.id === prize.tierId);
+                      const currentCount = getPrizeWinners(prize.id).length;
+                      const totalNeeded = prize.numberOfWinners || 1;
                       return (
                         <SelectItem key={prize.id} value={prize.id}>
                           <div className="flex items-center gap-2">
@@ -428,7 +435,7 @@ export default function WinnerDrawing() {
                             )}
                             <span>{prize.name}</span>
                             <Badge variant="secondary" className="ml-2">
-                              {prize.totalTicketsInPrize} tickets
+                              {currentCount}/{totalNeeded} winners
                             </Badge>
                           </div>
                         </SelectItem>
@@ -455,8 +462,10 @@ export default function WinnerDrawing() {
               </h3>
               <div className="grid gap-3">
                 {prizesWithWinners.map((prize) => {
-                  const winnerId = winners[prize.id];
-                  const winner = state.allUsers[winnerId];
+                  const prizeWinnerIds = getPrizeWinners(prize.id);
+                  const winnerNames = prizeWinnerIds
+                    .map(id => state.allUsers[id]?.name || 'Unknown')
+                    .join(', ');
                   const tier = prizeTiers.find(t => t.id === prize.tierId);
                   
                   return (
@@ -471,12 +480,7 @@ export default function WinnerDrawing() {
                         <div>
                           <p className="font-medium">{prize.name}</p>
                           <p className="text-sm text-muted-foreground">
-                            Winner: {winner?.name || 'Unknown'}
-                            {!winner && (
-                              <span className="text-xs text-red-500 block">
-                                (ID: {winnerId})
-                              </span>
-                            )}
+                            Winner: {winnerNames || 'Pending'}
                           </p>
                         </div>
                       </div>

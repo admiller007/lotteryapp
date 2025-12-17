@@ -7,6 +7,8 @@ import Image from 'next/image';
 import { useState, useEffect, useRef } from 'react';
 import SlotMachine from '@/components/SlotMachine';
 
+const formatWinnerKey = (prizeId: string, winnerId: string) => `${prizeId}:${winnerId}`;
+
 export default function WinnersPage() {
   const { state } = useAppContext();
   const { prizes, winners, allUsers, isAuctionOpen } = state;
@@ -19,7 +21,7 @@ export default function WinnersPage() {
     winnerProfilePicture?: string;
   } | null>(null);
   const [displayedWinners, setDisplayedWinners] = useState<Set<string>>(new Set());
-  const previousWinnersRef = useRef<Record<string, string>>({});
+  const previousWinnersRef = useRef<Record<string, string[]>>({});
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [winnerQueue, setWinnerQueue] = useState<Array<{
     prizeId: string;
@@ -30,14 +32,16 @@ export default function WinnersPage() {
   }>>([]);
 
   // Get prizes that have winners
-  const prizesWithWinners = prizes.filter(prize => winners[prize.id]);
-  
+  const prizesWithWinners = prizes.filter(prize => (winners[prize.id] || []).length > 0);
+
   // Get all winners
-  const allWinners = Object.entries(winners).map(([prizeId, winnerId]) => {
-    const prize = prizes.find(p => p.id === prizeId);
-    const winner = allUsers[winnerId];
-    return { prize, winner, winnerId };
-  }).filter(item => item.prize && item.winner);
+  const allWinners = Object.entries(winners)
+    .flatMap(([prizeId, winnerIds]) => winnerIds.map((winnerId) => {
+      const prize = prizes.find(p => p.id === prizeId);
+      const winner = allUsers[winnerId];
+      return { prize, winner, winnerId };
+    }))
+    .filter(item => item.prize && item.winner);
 
   // Watch for new winners and show slot machine
   useEffect(() => {
@@ -64,8 +68,13 @@ export default function WinnersPage() {
 
     // Skip slot machine on initial load - mark existing winners as displayed
     if (isInitialLoad && Object.keys(currentWinners).length > 0) {
-      console.log('Initial load - marking existing winners as displayed:', Object.keys(currentWinners));
-      setDisplayedWinners(new Set(Object.keys(currentWinners)));
+      const initialKeys = new Set<string>();
+      Object.entries(currentWinners).forEach(([prizeId, winnerIds]) => {
+        winnerIds.forEach((winnerId) => initialKeys.add(formatWinnerKey(prizeId, winnerId)));
+      });
+
+      console.log('Initial load - marking existing winners as displayed:', Array.from(initialKeys));
+      setDisplayedWinners(initialKeys);
       previousWinnersRef.current = currentWinners;
       setIsInitialLoad(false);
       return;
@@ -74,29 +83,34 @@ export default function WinnersPage() {
     // Find newly drawn winners (only after initial load)
     if (!isInitialLoad) {
       const newWinners = [];
-      for (const [prizeId, winnerId] of Object.entries(currentWinners)) {
-        if (!previousWinners[prizeId] && winnerId && !displayedWinners.has(prizeId)) {
-          const prize = prizes.find(p => p.id === prizeId);
-          const winner = allUsers[winnerId];
+      for (const [prizeId, winnerIds] of Object.entries(currentWinners)) {
+        const previousIds = previousWinners[prizeId] || [];
+        winnerIds.forEach((winnerId) => {
+          const key = formatWinnerKey(prizeId, winnerId);
+          const isNewWinner = !previousIds.includes(winnerId) || !displayedWinners.has(key);
+          if (isNewWinner) {
+            const prize = prizes.find(p => p.id === prizeId);
+            const winner = allUsers[winnerId];
 
-          console.log('New winner detected:', {
-            prizeId,
-            winnerId,
-            prize: prize?.name,
-            winner: winner?.name,
-            allUserIds: Object.keys(allUsers)
-          });
-
-          if (prize && winner) {
-            newWinners.push({
+            console.log('New winner detected:', {
               prizeId,
               winnerId,
-              winnerName: winner.name,
-              prizeName: prize.name,
-              winnerProfilePicture: winner.profilePictureUrl
+              prize: prize?.name,
+              winner: winner?.name,
+              allUserIds: Object.keys(allUsers)
             });
+
+            if (prize && winner) {
+              newWinners.push({
+                prizeId,
+                winnerId,
+                winnerName: winner.name,
+                prizeName: prize.name,
+                winnerProfilePicture: winner.profilePictureUrl
+              });
+            }
           }
-        }
+        });
       }
 
       // Add new winners to the queue
@@ -123,7 +137,7 @@ export default function WinnersPage() {
   const handleSlotMachineComplete = () => {
     setShowSlotMachine(false);
     if (currentWinner) {
-      setDisplayedWinners(prev => new Set([...prev, currentWinner.prizeId]));
+      setDisplayedWinners(prev => new Set([...prev, formatWinnerKey(currentWinner.prizeId, currentWinner.winnerId)]));
     }
     setCurrentWinner(null);
   };

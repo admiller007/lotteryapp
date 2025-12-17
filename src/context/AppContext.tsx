@@ -17,6 +17,7 @@ const initialPrizes: Prize[] = [
     imageUrl: 'https://placehold.co/300x200.png',
     entries: [],
     totalTicketsInPrize: 0,
+    numberOfWinners: 1,
   },
   {
     id: 'prize2',
@@ -25,6 +26,7 @@ const initialPrizes: Prize[] = [
     imageUrl: 'https://placehold.co/300x200.png',
     entries: [],
     totalTicketsInPrize: 0,
+    numberOfWinners: 1,
   },
   {
     id: 'prize3',
@@ -33,6 +35,7 @@ const initialPrizes: Prize[] = [
     imageUrl: 'https://placehold.co/300x200.png',
     entries: [],
     totalTicketsInPrize: 0,
+    numberOfWinners: 1,
   },
 ];
 
@@ -92,7 +95,7 @@ const buildDrawingPool = (prize: Prize, excludedUserIds: Set<string> = new Set<s
 
 const pickWinnerWithConflictCheck = (
   prize: Prize,
-  currentWinners: Record<string, string>,
+  currentWinners: Record<string, string[]>,
   excludedUserIds: Set<string> = new Set<string>()
 ) => {
   const drawingPool = buildDrawingPool(prize, excludedUserIds);
@@ -105,7 +108,7 @@ const pickWinnerWithConflictCheck = (
   const winnerId = drawingPool[winnerIndex];
   const conflictPrizeId =
     Object.entries(currentWinners).find(
-      ([pId, uId]) => pId !== prize.id && uId === winnerId
+      ([pId, uIds]) => pId !== prize.id && uIds.includes(winnerId)
     )?.[0] || null;
 
   return { winnerId, conflictPrizeId };
@@ -266,30 +269,42 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         };
       }
 
-      const updatedWinners: Record<string, string> = { ...state.winners };
+      const updatedWinners: Record<string, string[]> = { ...state.winners };
       const shuffledPrizes = [...state.prizes].sort(() => Math.random() - 0.5);
+      const assignedWinners = new Set<string>(Object.values(updatedWinners).flat());
       let conflict: { id: string; userId: string; userName?: string; existingPrizeId: string; newPrizeId: string } | null = null;
 
       for (const prize of shuffledPrizes) {
-        if (updatedWinners[prize.id]) continue; // Skip prizes that already have a winner
+        const desiredWinners = prize.numberOfWinners || 1;
+        const currentPrizeWinners = updatedWinners[prize.id] || [];
+        if (currentPrizeWinners.length >= desiredWinners) continue; // Skip prizes that already have enough winners
         if (prize.entries.length === 0) continue;
 
-        const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, updatedWinners);
+        const slotsToFill = desiredWinners - currentPrizeWinners.length;
 
-        if (!winnerId) continue;
+        for (let i = 0; i < slotsToFill; i++) {
+          const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, updatedWinners, assignedWinners);
 
-        if (conflictPrizeId) {
-          conflict = {
-            id: `conflict-${Date.now()}`,
-            userId: winnerId,
-            userName: state.allUsers[winnerId]?.name,
-            existingPrizeId: conflictPrizeId,
-            newPrizeId: prize.id,
-          };
-          break;
+          if (!winnerId) break;
+
+          if (conflictPrizeId) {
+            conflict = {
+              id: `conflict-${Date.now()}`,
+              userId: winnerId,
+              userName: state.allUsers[winnerId]?.name,
+              existingPrizeId: conflictPrizeId,
+              newPrizeId: prize.id,
+            };
+            break;
+          }
+
+          currentPrizeWinners.push(winnerId);
+          assignedWinners.add(winnerId);
         }
 
-        updatedWinners[prize.id] = winnerId;
+        updatedWinners[prize.id] = currentPrizeWinners;
+
+        if (conflict) break;
       }
 
       if (conflict) {
@@ -346,15 +361,19 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         };
       }
 
-      // Check if this prize already has a winner
-      if (state.winners[prizeId]) {
+      const desiredWinners = prize.numberOfWinners || 1;
+      const currentPrizeWinners = state.winners[prizeId] || [];
+
+      // Check if this prize already has enough winners
+      if (currentPrizeWinners.length >= desiredWinners) {
         return {
           ...state,
-          lastAction: { type: 'ERROR', message: 'This prize already has a winner. Use redraw if needed.' },
+          lastAction: { type: 'ERROR', message: 'This prize already has all winners drawn. Use redraw if needed.' },
         };
       }
 
-      const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, state.winners);
+      const excluded = new Set<string>(Object.values(state.winners).flat());
+      const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, state.winners, excluded);
 
       if (!winnerId) {
         return {
@@ -392,7 +411,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
 
       return {
         ...state,
-        winners: { ...state.winners, [prizeId]: winnerId },
+        winners: { ...state.winners, [prizeId]: [...currentPrizeWinners, winnerId] },
         pendingConflict: null,
         drawsPaused: false,
         lastAction: { type: 'SINGLE_WINNER_DRAWN', winnerName, prizeName: prize.name },
@@ -448,57 +467,39 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         return state;
       }
 
-      const originalWinnerId = state.winners[prizeId];
-      const fixedOtherWinners = new Set<string>();
-      Object.entries(state.winners).forEach(([pID, winnerUserID]) => {
-        if (pID !== prizeId && winnerUserID) {
-          fixedOtherWinners.add(winnerUserID);
-        }
-      });
-      
-      const eligibleUsersForRedraw = new Set<string>();
-      prize.entries.forEach(entry => {
-        if (entry.numTickets > 0 && entry.userId !== originalWinnerId && !fixedOtherWinners.has(entry.userId)) {
-          eligibleUsersForRedraw.add(entry.userId);
-        }
-      });
+      const desiredWinners = prize.numberOfWinners || 1;
+      const otherPrizeWinners = new Set<string>(
+        Object.entries(state.winners)
+          .filter(([pId]) => pId !== prizeId)
+          .flatMap(([, ids]) => ids)
+      );
 
-      if (eligibleUsersForRedraw.size === 0) {
-        const updatedWinners = { ...state.winners };
-        delete updatedWinners[prizeId];
+      const refreshedPrizeWinners: string[] = [];
+      for (let i = 0; i < desiredWinners; i++) {
+        const excluded = new Set<string>([...otherPrizeWinners, ...refreshedPrizeWinners]);
+        const { winnerId } = pickWinnerWithConflictCheck(prize, { ...state.winners, [prizeId]: refreshedPrizeWinners }, excluded);
+        if (!winnerId) break;
+        refreshedPrizeWinners.push(winnerId);
+      }
+
+      const updatedWinners = { ...state.winners, [prizeId]: refreshedPrizeWinners };
+
+      if (refreshedPrizeWinners.length === 0) {
         toast({ title: "Re-draw Result", description: `No eligible alternative winner could be found for ${prize.name}. The prize is now unwon.` });
         return { ...state, winners: updatedWinners };
       }
 
-      const finalEligibleDrawingPool: string[] = [];
-      prize.entries.forEach(entry => {
-        if (eligibleUsersForRedraw.has(entry.userId)) { 
-          for (let i = 0; i < entry.numTickets; i++) {
-            finalEligibleDrawingPool.push(entry.userId);
-          }
-        }
-      });
-      
-      if (finalEligibleDrawingPool.length === 0) {
-        const updatedWinners = { ...state.winners };
-        delete updatedWinners[prizeId];
-        toast({ title: "Re-draw Error", description: `Could not form a drawing pool for ${prize.name}. The prize is now unwon.` });
-        return { ...state, winners: updatedWinners };
-      }
+      const newWinnerNames = refreshedPrizeWinners
+        .map(id => state.allUsers[id]?.name || 'Unknown User')
+        .join(', ');
+      toast({ title: "Winner Re-drawn!", description: `${newWinnerNames} now win ${prize.name}.` });
 
-      const newWinnerIndex = Math.floor(Math.random() * finalEligibleDrawingPool.length);
-      const newWinnerId = finalEligibleDrawingPool[newWinnerIndex];
-      
-      const updatedWinners = { ...state.winners, [prizeId]: newWinnerId };
-      const newWinnerName = state.allUsers[newWinnerId]?.name || 'Unknown User';
-      toast({ title: "Winner Re-drawn!", description: `${newWinnerName} is the new winner of ${prize.name}.` });
-
-      // Save winner to Firebase
-      import('@/lib/firebaseService').then(async ({ saveWinner }) => {
+      // Save winners to Firebase
+      import('@/lib/firebaseService').then(async ({ saveWinners }) => {
         try {
-          await saveWinner(prizeId, newWinnerId);
+          await saveWinners(updatedWinners);
         } catch (error) {
-          console.error('Failed to save redrawn winner to Firebase:', error);
+          console.error('Failed to save redrawn winners to Firebase:', error);
         }
       });
 
@@ -570,28 +571,41 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       
       const newWinners = { ...state.winners };
       const shuffledPrizes = [...tierPrizes].sort(() => Math.random() - 0.5);
+      const assignedWinners = new Set<string>(Object.values(newWinners).flat());
       let conflict: { id: string; userId: string; userName?: string; existingPrizeId: string; newPrizeId: string } | null = null;
 
       for (const prize of shuffledPrizes) {
         if (prize.entries.length === 0) continue;
-        if (newWinners[prize.id]) continue; // Skip if already has winner
 
-        const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, newWinners);
+        const desiredWinners = prize.numberOfWinners || 1;
+        const currentPrizeWinners = newWinners[prize.id] || [];
+        if (currentPrizeWinners.length >= desiredWinners) continue;
 
-        if (!winnerId) continue;
+        const slotsToFill = desiredWinners - currentPrizeWinners.length;
 
-        if (conflictPrizeId) {
-          conflict = {
-            id: `conflict-${Date.now()}`,
-            userId: winnerId,
-            userName: state.allUsers[winnerId]?.name,
-            existingPrizeId: conflictPrizeId,
-            newPrizeId: prize.id,
-          };
-          break;
+        for (let i = 0; i < slotsToFill; i++) {
+          const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, newWinners, assignedWinners);
+
+          if (!winnerId) break;
+
+          if (conflictPrizeId) {
+            conflict = {
+              id: `conflict-${Date.now()}`,
+              userId: winnerId,
+              userName: state.allUsers[winnerId]?.name,
+              existingPrizeId: conflictPrizeId,
+              newPrizeId: prize.id,
+            };
+            break;
+          }
+
+          currentPrizeWinners.push(winnerId);
+          assignedWinners.add(winnerId);
         }
 
-        newWinners[prize.id] = winnerId;
+        newWinners[prize.id] = currentPrizeWinners;
+
+        if (conflict) break;
       }
 
       if (conflict) {
@@ -1028,12 +1042,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         
         // Now set up winners listener
         winnersUnsubscribe = onSnapshot(collection(db, 'winners'), (snapshot) => {
-          const winnersData: Record<string, string> = {};
-          
+          const winnersData: Record<string, string[]> = {};
+
           snapshot.forEach((doc) => {
             const data = doc.data();
             if (data.prizeId && data.winnerId) {
-              winnersData[data.prizeId] = data.winnerId;
+              if (!winnersData[data.prizeId]) {
+                winnersData[data.prizeId] = [];
+              }
+              winnersData[data.prizeId].push(data.winnerId);
             }
           });
           
