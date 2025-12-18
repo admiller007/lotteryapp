@@ -45,6 +45,7 @@ export interface FirebasePrize {
   }>;
   totalTicketsInPrize: number;
   tierId?: string;
+  numberOfWinners?: number;
   createdAt?: Timestamp;
 }
 
@@ -428,7 +429,8 @@ export const convertFirebasePrizeToAppPrize = (firebasePrize: FirebasePrize): Pr
     imageUrl: firebasePrize.imageUrl,
     entries: firebasePrize.entries || [],
     totalTicketsInPrize: firebasePrize.totalTicketsInPrize || 0,
-    tierId: firebasePrize.tierId
+    tierId: firebasePrize.tierId,
+    numberOfWinners: firebasePrize.numberOfWinners || 1
   };
 };
 
@@ -563,7 +565,7 @@ export const saveWinner = async (prizeId: string, winnerId: string): Promise<voi
 };
 
 // Save multiple winners to Firebase
-export const saveWinners = async (winners: Record<string, string>): Promise<void> => {
+export const saveWinners = async (winners: Record<string, string[]>): Promise<void> => {
   try {
     const batch = writeBatch(db);
     
@@ -574,12 +576,14 @@ export const saveWinners = async (winners: Record<string, string>): Promise<void
     });
     
     // Add new winners
-    Object.entries(winners).forEach(([prizeId, winnerId]) => {
-      const docRef = doc(collection(db, 'winners'));
-      batch.set(docRef, {
-        prizeId,
-        winnerId,
-        timestamp: Timestamp.now()
+    Object.entries(winners).forEach(([prizeId, winnerIds]) => {
+      winnerIds.forEach((winnerId) => {
+        const docRef = doc(collection(db, 'winners'));
+        batch.set(docRef, {
+          prizeId,
+          winnerId,
+          timestamp: Timestamp.now()
+        });
       });
     });
     

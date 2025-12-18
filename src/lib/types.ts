@@ -15,6 +15,7 @@ export interface Prize {
   entries: { userId: string; numTickets: number }[];
   totalTicketsInPrize: number;
   tierId?: string;
+  numberOfWinners?: number;
 }
 
 export interface AppUser {
@@ -43,7 +44,7 @@ export interface AuctionContextState {
   prizeTiers: PrizeTier[];
   currentUser: AppUser | null; // Can be null if no user is logged in
   isAuctionOpen: boolean;
-  winners: Record<string, string>;
+  winners: Record<string, string[]>;
   allUsers: Record<string, { id: string; name: string; tickets?: number; facilityName?: string; pin?: string; profilePictureUrl?: string; status?: 'inactive' | 'working' | 'at_party' }>;
   pendingConflict: PrizeConflict | null;
   drawsPaused: boolean;
@@ -81,6 +82,6 @@ export type AuctionAction =
   | { type: 'LOAD_USER_ALLOCATIONS'; payload: { userId: string; allocatedTickets: Record<string, number> } }
   | { type: 'UPLOAD_USERS'; payload: Array<{ firstName: string; lastName: string; employeeId: string; facilityName: string; tickets: number; pin: string; status?: 'inactive' | 'working' | 'at_party' }> }
   | { type: 'UPDATE_PROFILE_PICTURE'; payload: { userId: string; profilePictureUrl: string } }
-  | { type: 'SYNC_WINNERS_FROM_FIREBASE'; payload: Record<string, string> }
+  | { type: 'SYNC_WINNERS_FROM_FIREBASE'; payload: Record<string, string[]> }
   | { type: 'UPSERT_ALL_USERS'; payload: Record<string, { id: string; name: string; tickets?: number; facilityName?: string; pin?: string; profilePictureUrl?: string; status?: 'inactive' | 'working' | 'at_party' }> }
   | { type: 'RESOLVE_WINNER_CONFLICT'; payload: { conflictId: string; keepPrizeId: string; dropPrizeId: string; userId: string } };

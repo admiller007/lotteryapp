@@ -15,9 +15,10 @@ interface PrizeCardProps {
 export default function PrizeCard({ prize }: PrizeCardProps) {
   const { state } = useAppContext();
   const { isAuctionOpen, winners, currentUser, allUsers, prizeTiers } = state;
-  const winnerId = winners[prize.id];
-  const winner = winnerId ? allUsers[winnerId] : null;
-  const isCurrentUserWinner = currentUser && winnerId === currentUser.id;
+  const prizeWinners = winners[prize.id] || [];
+  const primaryWinnerId = prizeWinners[0];
+  const winner = primaryWinnerId ? allUsers[primaryWinnerId] : null;
+  const isCurrentUserWinner = currentUser ? prizeWinners.includes(currentUser.id) : false;
   const prizeTier = prize.tierId ? prizeTiers.find(tier => tier.id === prize.tierId) : null;
   // Check if the image URL is from an allowed domain for Next.js Image
   const isAllowedDomain = (url: string) => {
@@ -99,10 +100,14 @@ export default function PrizeCard({ prize }: PrizeCardProps) {
       <CardFooter className="p-4 border-t">
         {isAuctionOpen && currentUser ? ( // Also check if currentUser exists
           <TicketAllocator prizeId={prize.id} />
-        ) : winner ? (
+        ) : prizeWinners.length > 0 ? (
           <div className={`flex items-center p-2 rounded-md w-full ${isCurrentUserWinner ? 'bg-success/20' : 'bg-secondary'}`}>
             <Trophy className={`h-5 w-5 mr-2 ${isCurrentUserWinner ? 'text-success' : 'text-primary'}`} />
-            <span className="font-semibold">Winner: {winner.name}</span>
+            <span className="font-semibold">
+              Winner{prizeWinners.length > 1 ? 's' : ''}: {prizeWinners
+                .map(id => allUsers[id]?.name || 'Unknown')
+                .join(', ')}
+            </span>
           </div>
         ) : isAuctionOpen && !currentUser ? ( // If auction is open but no user logged in
            <p className="text-sm text-muted-foreground p-2 text-center w-full">Log in to allocate tickets.</p>

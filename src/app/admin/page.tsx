@@ -683,7 +683,7 @@ export default function AdminPage() {
   const totalTiers = (state.prizeTiers?.length) || 0;
   const totalUsers = firebaseUsers.length;
   const totalTickets = state.prizes.reduce((sum, p) => sum + (p.totalTicketsInPrize || 0), 0);
-  const winnersCount = Object.keys(state.winners).length;
+  const winnersCount = Object.values(state.winners).reduce((sum, winnerIds) => sum + winnerIds.length, 0);
 
   return (
     <div className="space-y-8">

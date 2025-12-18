@@ -43,7 +43,8 @@ export default function FirebasePrizeManager() {
     name: '',
     description: '',
     imageUrl: '',
-    tierId: 'no-tier'
+    tierId: 'no-tier',
+    numberOfWinners: 1
   });
   const [prizeImageFile, setPrizeImageFile] = useState<File | null>(null);
   const [prizeImagePreview, setPrizeImagePreview] = useState('');
@@ -149,7 +150,8 @@ export default function FirebasePrizeManager() {
           name: prizeFormData.name,
           description: prizeFormData.description,
           imageUrl: imageUrlToSave,
-          tierId: prizeFormData.tierId === 'no-tier' ? undefined : prizeFormData.tierId || undefined
+          tierId: prizeFormData.tierId === 'no-tier' ? undefined : prizeFormData.tierId || undefined,
+          numberOfWinners: prizeFormData.numberOfWinners || 1
         });
         toast({
           title: "Success",
@@ -163,7 +165,8 @@ export default function FirebasePrizeManager() {
           imageUrl: imageUrlToSave,
           entries: [],
           totalTicketsInPrize: 0,
-          tierId: prizeFormData.tierId === 'no-tier' ? undefined : prizeFormData.tierId || undefined
+          tierId: prizeFormData.tierId === 'no-tier' ? undefined : prizeFormData.tierId || undefined,
+          numberOfWinners: prizeFormData.numberOfWinners || 1
         });
         toast({
           title: "Success",
@@ -174,7 +177,7 @@ export default function FirebasePrizeManager() {
       await loadPrizes();
       setIsPrizeDialogOpen(false);
       setEditingPrize(null);
-      setPrizeFormData({ name: '', description: '', imageUrl: '', tierId: 'no-tier' });
+      setPrizeFormData({ name: '', description: '', imageUrl: '', tierId: 'no-tier', numberOfWinners: 1 });
       setPrizeImageFile(null);
       setPrizeImagePreview('');
 
@@ -286,7 +289,8 @@ export default function FirebasePrizeManager() {
       name: prize.name,
       description: prize.description,
       imageUrl: prize.imageUrl,
-      tierId: prize.tierId || 'no-tier'
+      tierId: prize.tierId || 'no-tier',
+      numberOfWinners: prize.numberOfWinners || 1
     });
     setPrizeImageFile(null);
     setPrizeImagePreview(prize.imageUrl || '');
@@ -295,7 +299,7 @@ export default function FirebasePrizeManager() {
 
   const openAddPrizeDialog = () => {
     setEditingPrize(null);
-    setPrizeFormData({ name: '', description: '', imageUrl: '', tierId: 'no-tier' });
+    setPrizeFormData({ name: '', description: '', imageUrl: '', tierId: 'no-tier', numberOfWinners: 1 });
     setPrizeImageFile(null);
     setPrizeImagePreview('');
     setIsPrizeDialogOpen(true);
@@ -386,7 +390,19 @@ export default function FirebasePrizeManager() {
                           rows={3}
                         />
                       </div>
-                      
+
+                      <div className="space-y-2">
+                        <Label htmlFor="prizeWinners">Number of drawings for this prize</Label>
+                        <Input
+                          id="prizeWinners"
+                          type="number"
+                          min={1}
+                          value={prizeFormData.numberOfWinners}
+                          onChange={(e) => setPrizeFormData(prev => ({ ...prev, numberOfWinners: Math.max(1, Number(e.target.value) || 1) }))}
+                        />
+                        <p className="text-xs text-muted-foreground">Set how many unique winners this prize should have.</p>
+                      </div>
+
                       <div className="space-y-2">
                         <Label htmlFor="prizeImage">Prize Image</Label>
                         <Input
@@ -505,7 +521,7 @@ export default function FirebasePrizeManager() {
                           <div className="flex items-center justify-between mb-2">
                             <h3 className="font-semibold text-lg">{prize.name}</h3>
                             {tier && (
-                              <div 
+                              <div
                                 className="px-2 py-1 rounded text-xs font-medium text-white"
                                 style={{ backgroundColor: tier.color }}
                               >
@@ -513,6 +529,7 @@ export default function FirebasePrizeManager() {
                               </div>
                             )}
                           </div>
+                          <p className="text-xs text-muted-foreground mb-1">Drawings: {prize.numberOfWinners || 1}</p>
                           <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
                             {prize.description}
                           </p>
