@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Ticket, Settings, LogIn, LogOut, UserCircle, ShieldCheck, Trophy, Camera } from 'lucide-react';
+import { Settings, LogIn, LogOut, UserCircle, ShieldCheck, Trophy, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import UserTicketInfo from './UserTicketInfo';
@@ -36,7 +36,11 @@ export default function AppHeader() {
     <header className="bg-primary text-primary-foreground shadow-md">
       <div className="container mx-auto px-4 py-4 flex justify-between items-center">
         <Link href="/" className="flex items-center gap-2">
-          <Ticket className="h-8 w-8" />
+          <img
+            src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS_Co0r39JGCIAOeT0xsgpRoy92u2VljkLfaA&s"
+            alt="Heart Logo"
+            className="h-8 w-8 object-contain"
+          />
           <h1 className="text-2xl font-bold font-headline">ACCO-LOTTERY</h1>
         </Link>
         <div className="flex items-center gap-4">
