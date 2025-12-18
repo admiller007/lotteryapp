@@ -14,7 +14,7 @@ import type { Prize } from '@/lib/types';
 
 export default function WinnerDrawing() {
   const { state, dispatch, isAdmin } = useAppContext();
-  const { prizes, prizeTiers, winners, isAuctionOpen } = state;
+  const { prizes, prizeTiers, winners, isAuctionOpen, pendingConflict, drawsPaused, allUsers } = state;
   const [selectedTier, setSelectedTier] = useState<string>('');
   const [selectedPrize, setSelectedPrize] = useState<string>('');
   const [isDrawAllDialogOpen, setIsDrawAllDialogOpen] = useState(false);
@@ -24,6 +24,25 @@ export default function WinnerDrawing() {
     prizeName: string;
     winnerProfilePicture?: string;
   } | null>(null);
+  const conflictUser = pendingConflict ? allUsers[pendingConflict.userId] : null;
+  const existingConflictPrize = pendingConflict ? prizes.find(p => p.id === pendingConflict.existingPrizeId) : null;
+  const newConflictPrize = pendingConflict ? prizes.find(p => p.id === pendingConflict.newPrizeId) : null;
+
+  const resolveConflict = (choice: 'keepExisting' | 'keepNew') => {
+    if (!pendingConflict) return;
+    const keepPrizeId = choice === 'keepNew' ? pendingConflict.newPrizeId : pendingConflict.existingPrizeId;
+    const dropPrizeId = choice === 'keepNew' ? pendingConflict.existingPrizeId : pendingConflict.newPrizeId;
+
+    dispatch({
+      type: 'RESOLVE_WINNER_CONFLICT',
+      payload: {
+        conflictId: pendingConflict.id,
+        keepPrizeId,
+        dropPrizeId,
+        userId: pendingConflict.userId,
+      },
+    });
+  };
 
   if (!isAdmin) {
     return (
@@ -36,11 +55,19 @@ export default function WinnerDrawing() {
   }
 
   const handleDrawAllWinners = () => {
+    if (pendingConflict || drawsPaused) {
+      toast({
+        title: "Resolve Winner Choice",
+        description: "Finish the pending winner conflict before drawing more prizes.",
+        variant: "destructive",
+      });
+      return;
+    }
     dispatch({ type: 'DRAW_WINNERS' });
     setIsDrawAllDialogOpen(false);
     toast({
-      title: "Winners Drawn!",
-      description: "All winners have been drawn successfully."
+      title: "Drawing Winners",
+      description: "Drawing winners and pausing if someone already holds a prize."
     });
   };
 
@@ -54,6 +81,15 @@ export default function WinnerDrawing() {
       return;
     }
 
+    if (pendingConflict || drawsPaused) {
+      toast({
+        title: "Resolve Winner Choice",
+        description: "Finish the pending winner conflict before drawing more prizes.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     dispatch({ 
       type: 'DRAW_TIER_WINNERS', 
       payload: { tierId: selectedTier } 
@@ -61,8 +97,8 @@ export default function WinnerDrawing() {
     
     const tier = prizeTiers.find(t => t.id === selectedTier);
     toast({
-      title: "Tier Winners Drawn!",
-      description: `Winners have been drawn for ${tier?.name || 'selected tier'}.`
+      title: "Drawing Tier Winners",
+      description: `Drawing winners for ${tier?.name || 'selected tier'}. Drawing will pause if a conflict appears.`
     });
     setSelectedTier('');
   };
@@ -73,6 +109,15 @@ export default function WinnerDrawing() {
         title: "Error",
         description: "Please select a prize to draw a winner for.",
         variant: "destructive"
+      });
+      return;
+    }
+
+    if (pendingConflict || drawsPaused) {
+      toast({
+        title: "Resolve Winner Choice",
+        description: "Finish the pending winner conflict before drawing more prizes.",
+        variant: "destructive",
       });
       return;
     }
@@ -274,6 +319,21 @@ export default function WinnerDrawing() {
     }
   }, [state.winners, showSlotMachine, currentDrawnWinner, prizes, state.allUsers]);
 
+  useEffect(() => {
+    if (pendingConflict) {
+      setShowSlotMachine(false);
+      setCurrentDrawnWinner(null);
+      const conflictUser = allUsers[pendingConflict.userId];
+      const existingPrize = prizes.find(p => p.id === pendingConflict.existingPrizeId);
+      const newPrize = prizes.find(p => p.id === pendingConflict.newPrizeId);
+
+      toast({
+        title: "Winner Choice Needed",
+        description: `${conflictUser?.name || 'Selected winner'} already holds ${existingPrize?.name || pendingConflict.existingPrizeId} and was drawn for ${newPrize?.name || pendingConflict.newPrizeId}. Choose which prize they keep.`,
+      });
+    }
+  }, [pendingConflict]);
+
   const prizesWithEntries = prizes.filter(p => p.entries.length > 0);
   const prizesWithWinners = prizes.filter(p => winners[p.id]);
   const tiersWithPrizes = prizeTiers.filter(tier => {
@@ -305,6 +365,34 @@ export default function WinnerDrawing() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
+          {pendingConflict && (
+            <div className="p-4 border border-yellow-300/70 bg-yellow-50 rounded-lg space-y-3">
+              <div className="flex items-center gap-2">
+                <Trophy className="h-4 w-4 text-yellow-600" />
+                <span className="font-semibold">Winner choice required</span>
+                <Badge variant="outline">Draws Paused</Badge>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {conflictUser?.name || 'A winner'} already holds {existingConflictPrize?.name || pendingConflict.existingPrizeId} and was drawn for {newConflictPrize?.name || pendingConflict.newPrizeId}. Choose which prize they keep; the other prize will redraw without them.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => resolveConflict('keepExisting')}
+                  className="flex-1"
+                >
+                  Keep {existingConflictPrize?.name || 'existing prize'} (redraw {newConflictPrize?.name || 'new prize'})
+                </Button>
+                <Button
+                  onClick={() => resolveConflict('keepNew')}
+                  className="flex-1"
+                >
+                  Keep {newConflictPrize?.name || 'new prize'} (redraw {existingConflictPrize?.name || 'existing prize'})
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Draw All Winners */}
           <div className="space-y-3">
             <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -312,13 +400,13 @@ export default function WinnerDrawing() {
               Draw All Winners
             </h3>
             <p className="text-sm text-muted-foreground">
-              Draw winners for all prizes at once. Each person can only win one prize.
+              Draw winners for all prizes at once. If someone already has a prize, drawing pauses so you can choose which prize they keep.
             </p>
             <Dialog open={isDrawAllDialogOpen} onOpenChange={setIsDrawAllDialogOpen}>
               <DialogTrigger asChild>
                 <Button 
                   className="w-full" 
-                  disabled={!isAuctionOpen || prizesWithEntries.length === 0}
+                  disabled={!isAuctionOpen || prizesWithEntries.length === 0 || drawsPaused}
                 >
                   <Shuffle className="h-4 w-4 mr-2" />
                   Draw All Winners
@@ -360,7 +448,7 @@ export default function WinnerDrawing() {
               Draw Winners by Tier
             </h3>
             <p className="text-sm text-muted-foreground">
-              Draw winners for all prizes in a specific tier.
+              Draw winners for all prizes in a specific tier. Drawing pauses if a winner already holds another prize until you choose which to keep.
             </p>
             <div className="flex gap-2">
               <Select value={selectedTier} onValueChange={setSelectedTier}>
@@ -390,7 +478,7 @@ export default function WinnerDrawing() {
               </Select>
               <Button 
                 onClick={handleDrawTierWinners}
-                disabled={!selectedTier}
+                disabled={!selectedTier || drawsPaused}
               >
                 <Target className="h-4 w-4 mr-2" />
                 Draw Tier
@@ -405,7 +493,7 @@ export default function WinnerDrawing() {
               Draw Single Prize Winner
             </h3>
             <p className="text-sm text-muted-foreground">
-              Draw a winner for a specific individual prize.
+              Draw a winner for a specific individual prize. If they already won elsewhere, we’ll pause so you can pick which prize they keep.
             </p>
             <div className="flex gap-2">
               <Select value={selectedPrize} onValueChange={setSelectedPrize}>
@@ -438,7 +526,7 @@ export default function WinnerDrawing() {
               </Select>
               <Button 
                 onClick={handleDrawSingleWinner}
-                disabled={!selectedPrize}
+                disabled={!selectedPrize || drawsPaused}
               >
                 <Gift className="h-4 w-4 mr-2" />
                 Draw Winner
@@ -504,6 +592,12 @@ export default function WinnerDrawing() {
                 <span className="text-muted-foreground">Auction Status: </span>
                 <Badge variant={isAuctionOpen ? "default" : "secondary"}>
                   {isAuctionOpen ? "Open" : "Closed"}
+                </Badge>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Draw State: </span>
+                <Badge variant={pendingConflict ? "destructive" : "outline"}>
+                  {pendingConflict ? "Paused - resolve conflict" : "Ready"}
                 </Badge>
               </div>
               <div>

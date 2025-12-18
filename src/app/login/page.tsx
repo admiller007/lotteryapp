@@ -77,7 +77,7 @@ export default function LoginPage() {
     <div className="flex items-center justify-center min-h-[calc(100vh-150px)]">
       <Card className="w-full max-w-md shadow-xl">
         <CardHeader>
-          <CardTitle className="text-2xl font-headline text-center">Welcome to TicketToss</CardTitle>
+          <CardTitle className="text-2xl font-headline text-center">Welcome to ACCO-LOTTERY</CardTitle>
           <CardDescription className="text-center">
             Please enter your details to access the auction.
           </CardDescription>
@@ -89,7 +89,7 @@ export default function LoginPage() {
               <Input
                 id="firstName"
                 value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
+                onChange={(e) => setFirstName(e.target.value.trim())}
                 required
                 placeholder="Enter your first name"
               />
@@ -99,7 +99,7 @@ export default function LoginPage() {
               <Input
                 id="lastName"
                 value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
+                onChange={(e) => setLastName(e.target.value.trim())}
                 required
                 placeholder="Enter your last name"
               />
@@ -109,7 +109,7 @@ export default function LoginPage() {
               <Input
                 id="facilityName"
                 value={facilityName}
-                onChange={(e) => setFacilityName(e.target.value)}
+                onChange={(e) => setFacilityName(e.target.value.trim())}
                 required
                 placeholder="Enter your facility name"
               />

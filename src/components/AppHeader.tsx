@@ -37,7 +37,7 @@ export default function AppHeader() {
       <div className="container mx-auto px-4 py-4 flex justify-between items-center">
         <Link href="/" className="flex items-center gap-2">
           <Ticket className="h-8 w-8" />
-          <h1 className="text-2xl font-bold font-headline">TicketToss</h1>
+          <h1 className="text-2xl font-bold font-headline">ACCO-LOTTERY</h1>
         </Link>
         <div className="flex items-center gap-4">
           {isHydrated && (

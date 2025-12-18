@@ -13,24 +13,24 @@
     --popover: 0 0% 100%;
     --popover-foreground: 225 15% 15%;
 
-    --primary: 220 100% 54%; /* Vibrant lottery blue #1E88E5 */
+    --primary: 0 70% 70%; /* Brand coral #FF6B6B */
     --primary-foreground: 0 0% 100%; /* Pure white text */
 
-    --secondary: 39 100% 93%; /* Light gold background #FEF3C7 */
-    --secondary-foreground: 45 100% 25%; /* Dark gold text #B45309 */
+    --secondary: 0 0% 95%; /* Light gray background #F5F5F5 */
+    --secondary-foreground: 0 0% 40%; /* Dark gray text #666666 */
 
     --muted: 210 20% 92%; /* Light blue-gray #EFF6FF */
     --muted-foreground: 215 20% 45%; /* Muted blue-gray text */
 
-    --accent: 45 100% 51%; /* Bright gold #FFB000 */
-    --accent-foreground: 45 100% 10%; /* Very dark gold text */
+    --accent: 0 0% 62%; /* Brand gray #9E9E9E */
+    --accent-foreground: 0 0% 100%; /* White text on gray */
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
 
     --border: 210 20% 85%; /* Light blue-gray border */
     --input: 210 20% 95%; /* Very light input background */
-    --ring: 220 100% 54%; /* Focus ring matches primary */
+    --ring: 0 70% 70%; /* Focus ring matches primary coral */
 
     --success: 142 76% 36%; /* Winning green #16A34A */
     --success-foreground: 0 0% 100%;
@@ -38,8 +38,8 @@
     --warning: 38 92% 50%; /* Attention orange #F59E0B */
     --warning-foreground: 0 0% 100%;
 
-    --chart-1: 45 100% 51%; /* Gold */
-    --chart-2: 220 100% 54%; /* Blue */
+    --chart-1: 0 70% 70%; /* Brand coral */
+    --chart-2: 0 0% 62%; /* Brand gray */
     --chart-3: 142 76% 36%; /* Green */
     --chart-4: 271 100% 71%; /* Purple*/
     --chart-5: 0 84% 60%; /* Red */
@@ -66,16 +66,16 @@
     --popover: 225 20% 12%;
     --popover-foreground: 210 20% 95%;
 
-    --primary: 220 100% 65%; /* Bright lottery blue */
+    --primary: 0 70% 75%; /* Bright brand coral for dark mode */
     --primary-foreground: 225 25% 8%;
 
-    --secondary: 45 50% 20%; /* Dark gold background */
-    --secondary-foreground: 45 100% 80%; /* Light gold text */
+    --secondary: 0 0% 18%; /* Dark gray background */
+    --secondary-foreground: 0 0% 80%; /* Light gray text */
 
     --muted: 225 15% 18%; /* Dark blue-gray */
     --muted-foreground: 215 15% 65%; /* Light blue-gray text */
 
-    --accent: 45 100% 60%; /* Bright gold for dark mode */
+    --accent: 0 0% 70%; /* Bright gray for dark mode */
     --accent-foreground: 225 25% 8%;
 
     --destructive: 0 70% 50%;
@@ -83,7 +83,7 @@
 
     --border: 225 15% 25%; /* Dark border */
     --input: 225 15% 15%; /* Dark input background */
-    --ring: 220 100% 65%;
+    --ring: 0 70% 75%;
 
     --success: 142 76% 45%; /* Brighter green for dark mode */
     --success-foreground: 225 25% 8%;
@@ -91,8 +91,8 @@
     --warning: 38 92% 60%; /* Brighter orange for dark mode */
     --warning-foreground: 225 25% 8%;
     
-    --chart-1: 45 100% 60%; /* Gold */
-    --chart-2: 220 100% 65%; /* Blue */
+    --chart-1: 0 70% 75%; /* Brand coral for dark mode */
+    --chart-2: 0 0% 70%; /* Brand gray for dark mode */
     --chart-3: 142 76% 45%; /* Green */
     --chart-4: 271 100% 75%; /* Purple */
     --chart-5: 0 84% 65%; /* Red */
