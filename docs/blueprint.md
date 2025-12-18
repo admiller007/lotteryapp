@@ -1,4 +1,4 @@
-# **App Name**: TicketToss
+# **App Name**: ACCO-LOTTERY
 
 ## Core Features:
 

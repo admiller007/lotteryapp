@@ -5,8 +5,8 @@ import { Toaster } from '@/components/ui/toaster';
 import AppHeader from '@/components/AppHeader';
 
 export const metadata: Metadata = {
-  title: 'TicketToss',
-  description: 'A Chinese auction application',
+  title: 'ACCO-LOTTERY',
+  description: 'ACCO-LOTTERY – A Chinese auction application',
 };
 
 export default function RootLayout({

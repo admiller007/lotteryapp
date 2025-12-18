@@ -77,7 +77,7 @@ export default function LoginPage() {
     <div className="flex items-center justify-center min-h-[calc(100vh-150px)]">
       <Card className="w-full max-w-md shadow-xl">
         <CardHeader>
-          <CardTitle className="text-2xl font-headline text-center">Welcome to TicketToss</CardTitle>
+          <CardTitle className="text-2xl font-headline text-center">Welcome to ACCO-LOTTERY</CardTitle>
           <CardDescription className="text-center">
             Please enter your details to access the auction.
           </CardDescription>
