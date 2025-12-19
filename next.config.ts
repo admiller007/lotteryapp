@@ -48,6 +48,18 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
+        hostname: 'www.homecontrols.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'homecontrols.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
         hostname: '*.amazonaws.com',
         port: '',
         pathname: '/**',
@@ -55,6 +67,19 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: '*.cloudfront.net',
+        port: '',
+        pathname: '/**',
+      },
+      // Allow images from any remote host (supports both HTTPS and HTTP)
+      {
+        protocol: 'https',
+        hostname: '**',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'http',
+        hostname: '**',
         port: '',
         pathname: '/**',
       },
