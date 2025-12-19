@@ -46,6 +46,7 @@ export interface FirebasePrize {
   totalTicketsInPrize: number;
   tierId?: string;
   numberOfWinners?: number;
+  excludedFacilities?: string[];
   createdAt?: Timestamp;
 }
 
@@ -430,7 +431,8 @@ export const convertFirebasePrizeToAppPrize = (firebasePrize: FirebasePrize): Pr
     entries: firebasePrize.entries || [],
     totalTicketsInPrize: firebasePrize.totalTicketsInPrize || 0,
     tierId: firebasePrize.tierId,
-    numberOfWinners: firebasePrize.numberOfWinners || 1
+    numberOfWinners: firebasePrize.numberOfWinners || 1,
+    excludedFacilities: firebasePrize.excludedFacilities || []
   };
 };
 

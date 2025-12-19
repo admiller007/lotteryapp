@@ -46,6 +46,7 @@ export default function FirebasePrizeManager() {
     tierId: 'no-tier',
     numberOfWinners: 1
   });
+  const [excludedFacilitiesInput, setExcludedFacilitiesInput] = useState('');
   const [prizeImageFile, setPrizeImageFile] = useState<File | null>(null);
   const [prizeImagePreview, setPrizeImagePreview] = useState('');
   const [tierFormData, setTierFormData] = useState({
@@ -129,6 +130,10 @@ export default function FirebasePrizeManager() {
 
     try {
       let imageUrlToSave = prizeFormData.imageUrl;
+      const normalizedExcludedFacilities = excludedFacilitiesInput
+        .split(',')
+        .map(facility => facility.trim())
+        .filter(Boolean);
 
       if (prizeImageFile) {
         imageUrlToSave = await uploadPrizeImage(prizeImageFile);
@@ -151,7 +156,8 @@ export default function FirebasePrizeManager() {
           description: prizeFormData.description,
           imageUrl: imageUrlToSave,
           tierId: prizeFormData.tierId === 'no-tier' ? undefined : prizeFormData.tierId || undefined,
-          numberOfWinners: prizeFormData.numberOfWinners || 1
+          numberOfWinners: prizeFormData.numberOfWinners || 1,
+          excludedFacilities: normalizedExcludedFacilities
         });
         toast({
           title: "Success",
@@ -166,7 +172,8 @@ export default function FirebasePrizeManager() {
           entries: [],
           totalTicketsInPrize: 0,
           tierId: prizeFormData.tierId === 'no-tier' ? undefined : prizeFormData.tierId || undefined,
-          numberOfWinners: prizeFormData.numberOfWinners || 1
+          numberOfWinners: prizeFormData.numberOfWinners || 1,
+          excludedFacilities: normalizedExcludedFacilities
         });
         toast({
           title: "Success",
@@ -180,6 +187,7 @@ export default function FirebasePrizeManager() {
       setPrizeFormData({ name: '', description: '', imageUrl: '', tierId: 'no-tier', numberOfWinners: 1 });
       setPrizeImageFile(null);
       setPrizeImagePreview('');
+      setExcludedFacilitiesInput('');
 
     } catch (error: any) {
       console.error('Error saving prize:', error);
@@ -292,6 +300,7 @@ export default function FirebasePrizeManager() {
       tierId: prize.tierId || 'no-tier',
       numberOfWinners: prize.numberOfWinners || 1
     });
+    setExcludedFacilitiesInput((prize.excludedFacilities || []).join(', '));
     setPrizeImageFile(null);
     setPrizeImagePreview(prize.imageUrl || '');
     setIsPrizeDialogOpen(true);
@@ -302,6 +311,7 @@ export default function FirebasePrizeManager() {
     setPrizeFormData({ name: '', description: '', imageUrl: '', tierId: 'no-tier', numberOfWinners: 1 });
     setPrizeImageFile(null);
     setPrizeImagePreview('');
+    setExcludedFacilitiesInput('');
     setIsPrizeDialogOpen(true);
   };
 
@@ -401,6 +411,19 @@ export default function FirebasePrizeManager() {
                           onChange={(e) => setPrizeFormData(prev => ({ ...prev, numberOfWinners: Math.max(1, Number(e.target.value) || 1) }))}
                         />
                         <p className="text-xs text-muted-foreground">Set how many unique winners this prize should have.</p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="excludedFacilities">Excluded Facilities</Label>
+                        <Input
+                          id="excludedFacilities"
+                          value={excludedFacilitiesInput}
+                          onChange={(e) => setExcludedFacilitiesInput(e.target.value)}
+                          placeholder="e.g. Downtown Warehouse, Remote Office"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          People from these facilities will be skipped when drawing winners for this prize. Separate multiple facilities with commas.
+                        </p>
                       </div>
 
                       <div className="space-y-2">
