@@ -508,6 +508,7 @@ export default function WinnerDrawing() {
                 <SelectContent>
                   {prizesWithEntries
                     .filter(prize => !prizeHasAllWinners(prize)) // Only show prizes without winners
+                    .sort((a, b) => a.name.localeCompare(b.name))
                     .map((prize) => {
                       const tier = prizeTiers.find(t => t.id === prize.tierId);
                       const currentCount = getPrizeWinners(prize.id).length;
