@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Shuffle, Target, Users, Gift, Zap } from 'lucide-react';
+import { Trophy, Shuffle, Target, Users, Gift, Zap, UserCheck } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { toast } from '@/hooks/use-toast';
 import SlotMachine from '@/components/SlotMachine';
@@ -17,6 +17,8 @@ export default function WinnerDrawing() {
   const { prizes, prizeTiers, winners, isAuctionOpen, pendingConflict, drawsPaused, allUsers } = state;
   const [selectedTier, setSelectedTier] = useState<string>('');
   const [selectedPrize, setSelectedPrize] = useState<string>('');
+  const [manualPrizeId, setManualPrizeId] = useState<string>('');
+  const [manualWinnerId, setManualWinnerId] = useState<string>('');
   const [isDrawAllDialogOpen, setIsDrawAllDialogOpen] = useState(false);
   const [showSlotMachine, setShowSlotMachine] = useState(false);
   const [currentDrawnWinner, setCurrentDrawnWinner] = useState<{
@@ -27,6 +29,14 @@ export default function WinnerDrawing() {
   const conflictUser = pendingConflict ? allUsers[pendingConflict.userId] : null;
   const existingConflictPrize = pendingConflict ? prizes.find(p => p.id === pendingConflict.existingPrizeId) : null;
   const newConflictPrize = pendingConflict ? prizes.find(p => p.id === pendingConflict.newPrizeId) : null;
+  const manualPrize = prizes.find((p) => p.id === manualPrizeId);
+  const manualPrizeEntrants = manualPrize ? manualPrize.entries.filter((entry) => entry.numTickets > 0) : [];
+  const manualEligibleUsers = Array.from(new Set(manualPrizeEntrants.map((entry) => entry.userId)))
+    .map((userId) => ({
+      id: userId,
+      name: state.allUsers[userId]?.name || userId,
+      facility: state.allUsers[userId]?.facilityName
+    }));
 
   const resolveConflict = (choice: 'keepExisting' | 'keepNew') => {
     if (!pendingConflict) return;
@@ -176,6 +186,62 @@ export default function WinnerDrawing() {
       });
       setShowSlotMachine(true);
     }
+  };
+
+  const handleAssignSpecificWinner = () => {
+    if (!manualPrizeId || !manualWinnerId) {
+      toast({
+        title: "Error",
+        description: "Please select both a prize and a winner.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (pendingConflict || drawsPaused) {
+      toast({
+        title: "Resolve Winner Choice",
+        description: "Finish the pending winner conflict before assigning winners.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const prize = prizes.find((p) => p.id === manualPrizeId);
+    if (!prize) {
+      toast({
+        title: "Prize Not Found",
+        description: "Select a valid prize to assign a winner.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const hasEntries = prize.entries.some((entry) => entry.userId === manualWinnerId && entry.numTickets > 0);
+    if (!hasEntries) {
+      toast({
+        title: "No Entries",
+        description: "The selected winner has no entries for this prize.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const winner = state.allUsers[manualWinnerId];
+    setCurrentDrawnWinner({
+      winnerName: winner?.name || 'Selected winner',
+      prizeName: prize.name,
+      winnerProfilePicture: winner?.profilePictureUrl,
+    });
+    setShowSlotMachine(true);
+
+    dispatch({
+      type: 'ASSIGN_SPECIFIC_WINNER',
+      payload: { prizeId: manualPrizeId, userId: manualWinnerId },
+    });
+
+    setManualPrizeId('');
+    setManualWinnerId('');
   };
 
   const handleSlotMachineComplete = () => {
@@ -537,6 +603,84 @@ export default function WinnerDrawing() {
               >
                 <Gift className="h-4 w-4 mr-2" />
                 Draw Winner
+              </Button>
+            </div>
+          </div>
+
+          {/* Assign Specific Winner */}
+          <div className="space-y-3">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <UserCheck className="h-4 w-4" />
+              Choose a Specific Winner
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Manually select the winner for a prize from users who have entries for it. Conflicts are handled just like random draws.
+            </p>
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-2">
+                <Select value={manualPrizeId} onValueChange={(value) => { setManualPrizeId(value); setManualWinnerId(''); }}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Select a prize" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {prizesWithEntries
+                      .filter(prize => !prizeHasAllWinners(prize))
+                      .map((prize) => {
+                      const tier = prizeTiers.find(t => t.id === prize.tierId);
+                      const currentCount = getPrizeWinners(prize.id).length;
+                      const totalNeeded = prize.numberOfWinners || 1;
+                      return (
+                        <SelectItem key={prize.id} value={prize.id}>
+                          <div className="flex items-center gap-2">
+                            {tier && (
+                              <div
+                                className="w-3 h-3 rounded-full"
+                                style={{ backgroundColor: tier.color }}
+                              />
+                            )}
+                            <span>{prize.name}</span>
+                            <Badge variant="secondary" className="ml-2">
+                              {currentCount}/{totalNeeded} winners
+                            </Badge>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={manualWinnerId}
+                  onValueChange={setManualWinnerId}
+                  disabled={!manualPrizeId || manualEligibleUsers.length === 0}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder={manualPrizeId ? "Select an eligible user" : "Choose a prize first"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {manualEligibleUsers.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        <div className="flex flex-col">
+                          <span>{user.name}</span>
+                          {user.facility && (
+                            <span className="text-xs text-muted-foreground">{user.facility}</span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                    {manualPrizeId && manualEligibleUsers.length === 0 && (
+                      <SelectItem value="__none" disabled>
+                        No users with entries for this prize
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button 
+                onClick={handleAssignSpecificWinner}
+                disabled={!manualPrizeId || !manualWinnerId || drawsPaused}
+              >
+                <UserCheck className="h-4 w-4 mr-2" />
+                Assign Winner
               </Button>
             </div>
           </div>

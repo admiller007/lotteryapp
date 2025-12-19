@@ -417,6 +417,87 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         lastAction: { type: 'SINGLE_WINNER_DRAWN', winnerName, prizeName: prize.name },
       };
     }
+    case 'ASSIGN_SPECIFIC_WINNER': {
+      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state;
+      if (state.pendingConflict) {
+        return {
+          ...state,
+          lastAction: { type: 'WINNER_CONFLICT_PENDING', message: 'Resolve the existing winner conflict before drawing more prizes.' },
+        };
+      }
+
+      const { prizeId, userId } = action.payload;
+      const prize = state.prizes.find((p) => p.id === prizeId);
+      if (!prize) {
+        return {
+          ...state,
+          lastAction: { type: 'ERROR', message: 'Prize not found for manual winner selection.' },
+        };
+      }
+
+      const desiredWinners = prize.numberOfWinners || 1;
+      const currentPrizeWinners = state.winners[prizeId] || [];
+
+      if (currentPrizeWinners.includes(userId)) {
+        return state;
+      }
+
+      if (currentPrizeWinners.length >= desiredWinners) {
+        return {
+          ...state,
+          lastAction: { type: 'ERROR', message: 'This prize already has all winners drawn. Use redraw if needed.' },
+        };
+      }
+
+      const hasEntriesForPrize = prize.entries.some((entry) => entry.userId === userId && entry.numTickets > 0);
+      if (!hasEntriesForPrize) {
+        return {
+          ...state,
+          lastAction: { type: 'ERROR', message: 'Selected winner does not have entries for this prize.' },
+        };
+      }
+
+      const conflictPrizeId =
+        Object.entries(state.winners).find(
+          ([pId, uIds]) => pId !== prize.id && uIds.includes(userId)
+        )?.[0] || null;
+
+      if (conflictPrizeId) {
+        const conflict = {
+          id: `conflict-${Date.now()}`,
+          userId,
+          userName: state.allUsers[userId]?.name,
+          existingPrizeId: conflictPrizeId,
+          newPrizeId: prize.id,
+        };
+        return {
+          ...state,
+          pendingConflict: conflict,
+          drawsPaused: true,
+          lastAction: { type: 'WINNER_CONFLICT', message: `${conflict.userName || 'Selected user'} already holds another prize. Resolve the conflict to continue.` },
+        };
+      }
+
+      const winnerName = state.allUsers[userId]?.name || 'Unknown User';
+      const updatedPrizeWinners = [...currentPrizeWinners, userId];
+      const updatedWinners = { ...state.winners, [prizeId]: updatedPrizeWinners };
+
+      import('@/lib/firebaseService').then(async ({ saveWinner }) => {
+        try {
+          await saveWinner(prizeId, userId);
+        } catch (error) {
+          console.error('Failed to save winner to Firebase:', error);
+        }
+      });
+
+      return {
+        ...state,
+        winners: updatedWinners,
+        pendingConflict: null,
+        drawsPaused: false,
+        lastAction: { type: 'SINGLE_WINNER_DRAWN', winnerName, prizeName: prize.name },
+      };
+    }
     case 'RESET_AUCTION': {
       if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state; 
       
