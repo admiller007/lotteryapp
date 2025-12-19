@@ -39,7 +39,7 @@ export default function AppHeader() {
           <img
             src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS_Co0r39JGCIAOeT0xsgpRoy92u2VljkLfaA&s"
             alt="Heart Logo"
-            className="h-8 w-8 object-contain"
+            className="h-10 w-10 sm:h-12 sm:w-12 object-contain"
           />
           <h1 className="text-2xl font-bold font-headline">ACCO-LOTTERY</h1>
         </Link>
