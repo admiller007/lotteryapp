@@ -228,7 +228,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
 
 
       // Save to Firebase
-      import('@/lib/firebaseService').then(async ({ allocateTickets, updatePrizeEntries }) => {
+      import('@/lib/firebaseService').then(async ({ allocateTickets }) => {
         try {
           // Save the allocation to Firebase
           await allocateTickets({
@@ -239,10 +239,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
             tickets: count,
             timestamp: new Date().toISOString()
           });
-          
-          // Update the prize entries in Firebase
-          await updatePrizeEntries(prizeId, updatedEntries);
-          
+
           console.log('Firebase allocation saved successfully');
         } catch (error) {
           console.error('Failed to save allocation to Firebase:', error);
