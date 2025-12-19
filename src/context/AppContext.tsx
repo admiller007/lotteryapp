@@ -18,6 +18,7 @@ const initialPrizes: Prize[] = [
     entries: [],
     totalTicketsInPrize: 0,
     numberOfWinners: 1,
+    excludedFacilities: [],
   },
   {
     id: 'prize2',
@@ -27,6 +28,7 @@ const initialPrizes: Prize[] = [
     entries: [],
     totalTicketsInPrize: 0,
     numberOfWinners: 1,
+    excludedFacilities: [],
   },
   {
     id: 'prize3',
@@ -36,6 +38,7 @@ const initialPrizes: Prize[] = [
     entries: [],
     totalTicketsInPrize: 0,
     numberOfWinners: 1,
+    excludedFacilities: [],
   },
 ];
 
@@ -78,12 +81,21 @@ const initialState: AuctionContextState = {
   },
 };
 
-const buildDrawingPool = (prize: Prize, excludedUserIds: Set<string> = new Set<string>()) => {
+const buildDrawingPool = (
+  prize: Prize,
+  excludedUserIds: Set<string> = new Set<string>(),
+  allUsers: AuctionContextState['allUsers'] = {}
+) => {
   const drawingPool: string[] = [];
+  const normalizedExcludedFacilities = (prize.excludedFacilities || [])
+    .map(facility => facility.trim().toLowerCase())
+    .filter(Boolean);
 
   prize.entries.forEach(entry => {
     if (entry.numTickets <= 0) return;
     if (excludedUserIds.has(entry.userId)) return;
+    const facilityName = allUsers[entry.userId]?.facilityName?.trim().toLowerCase();
+    if (facilityName && normalizedExcludedFacilities.includes(facilityName)) return;
 
     for (let i = 0; i < entry.numTickets; i++) {
       drawingPool.push(entry.userId);
@@ -96,9 +108,10 @@ const buildDrawingPool = (prize: Prize, excludedUserIds: Set<string> = new Set<s
 const pickWinnerWithConflictCheck = (
   prize: Prize,
   currentWinners: Record<string, string[]>,
-  excludedUserIds: Set<string> = new Set<string>()
+  excludedUserIds: Set<string> = new Set<string>(),
+  allUsers: AuctionContextState['allUsers'] = {}
 ) => {
-  const drawingPool = buildDrawingPool(prize, excludedUserIds);
+  const drawingPool = buildDrawingPool(prize, excludedUserIds, allUsers);
 
   if (drawingPool.length === 0) {
     return { winnerId: null as string | null, conflictPrizeId: null as string | null };
@@ -283,7 +296,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         const slotsToFill = desiredWinners - currentPrizeWinners.length;
 
         for (let i = 0; i < slotsToFill; i++) {
-          const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, updatedWinners, assignedWinners);
+          const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, updatedWinners, assignedWinners, state.allUsers);
 
           if (!winnerId) break;
 
@@ -373,7 +386,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       }
 
       const excluded = new Set<string>(Object.values(state.winners).flat());
-      const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, state.winners, excluded);
+      const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, state.winners, excluded, state.allUsers);
 
       if (!winnerId) {
         return {
@@ -477,7 +490,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       const refreshedPrizeWinners: string[] = [];
       for (let i = 0; i < desiredWinners; i++) {
         const excluded = new Set<string>([...otherPrizeWinners, ...refreshedPrizeWinners]);
-        const { winnerId } = pickWinnerWithConflictCheck(prize, { ...state.winners, [prizeId]: refreshedPrizeWinners }, excluded);
+        const { winnerId } = pickWinnerWithConflictCheck(prize, { ...state.winners, [prizeId]: refreshedPrizeWinners }, excluded, state.allUsers);
         if (!winnerId) break;
         refreshedPrizeWinners.push(winnerId);
       }
@@ -584,7 +597,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         const slotsToFill = desiredWinners - currentPrizeWinners.length;
 
         for (let i = 0; i < slotsToFill; i++) {
-          const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, newWinners, assignedWinners);
+          const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, newWinners, assignedWinners, state.allUsers);
 
           if (!winnerId) break;
 
@@ -664,7 +677,8 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(
           dropPrize,
           updatedWinners,
-          new Set([userId])
+          new Set([userId]),
+          state.allUsers
         );
 
         if (winnerId && !conflictPrizeId) {
