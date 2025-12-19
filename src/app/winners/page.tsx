@@ -2,7 +2,7 @@
 import { useAppContext } from '@/context/AppContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Gift, Users, Calendar } from 'lucide-react';
+import { Trophy, Gift, Calendar } from 'lucide-react';
 import Image from 'next/image';
 import { useState, useEffect, useRef } from 'react';
 import SlotMachine from '@/components/SlotMachine';
@@ -158,19 +158,12 @@ export default function WinnersPage() {
               The lottery setup is complete! Winners will be announced here as they are drawn.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto mt-12">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto mt-12">
             <Card>
               <CardContent className="pt-6 text-center">
                 <Gift className="h-8 w-8 text-primary mx-auto mb-2" />
                 <p className="font-semibold">Total Prizes</p>
                 <p className="text-2xl font-bold text-primary">{prizes.length}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6 text-center">
-                <Users className="h-8 w-8 text-primary mx-auto mb-2" />
-                <p className="font-semibold">Participants</p>
-                <p className="text-2xl font-bold text-primary">{Object.keys(allUsers).length}</p>
               </CardContent>
             </Card>
             <Card>
@@ -311,7 +304,7 @@ export default function WinnersPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="text-center">
                 <p className="text-2xl font-bold text-primary">{prizes.length}</p>
                 <p className="text-sm text-muted-foreground">Total Prizes</p>
@@ -319,10 +312,6 @@ export default function WinnersPage() {
               <div className="text-center">
                 <p className="text-2xl font-bold text-accent">{allWinners.length}</p>
                 <p className="text-sm text-muted-foreground">Winners Drawn</p>
-              </div>
-              <div className="text-center">
-                <p className="text-2xl font-bold text-secondary-foreground">{Object.keys(allUsers).length}</p>
-                <p className="text-sm text-muted-foreground">Participants</p>
               </div>
             </div>
           </CardContent>
