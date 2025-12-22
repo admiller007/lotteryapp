@@ -3,6 +3,7 @@ import { getFirestore, Firestore } from 'firebase/firestore';
 import { getAuth, Auth } from 'firebase/auth';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 
+// Firebase Configuration - Updated 2025-12-22 to fix env var cache issue
 // Check if all required Firebase environment variables are present
 const requiredEnvVars = [
   'NEXT_PUBLIC_FIREBASE_API_KEY',
@@ -13,8 +14,14 @@ const requiredEnvVars = [
   'NEXT_PUBLIC_FIREBASE_APP_ID'
 ];
 
+// Check for missing environment variables at build time
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
 const isFirebaseConfigured = missingVars.length === 0;
+
+// Log configuration status during build (removed in production bundles)
+if (process.env.NODE_ENV !== 'production' && typeof window === 'undefined') {
+  console.log('[Firebase Config] Configured:', isFirebaseConfigured);
+}
 
 // Firebase configuration
 const firebaseConfig = isFirebaseConfigured ? {
