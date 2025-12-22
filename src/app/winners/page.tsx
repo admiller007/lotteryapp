@@ -31,13 +31,16 @@ export default function WinnersPage() {
     winnerProfilePicture?: string;
   }>>([]);
 
+  // Create prize lookup map for O(1) access instead of O(n) .find()
+  const prizesMap = new Map(prizes.map(p => [p.id, p]));
+
   // Get prizes that have winners
   const prizesWithWinners = prizes.filter(prize => (winners[prize.id] || []).length > 0);
 
   // Get all winners
   const allWinners = Object.entries(winners)
     .flatMap(([prizeId, winnerIds]) => winnerIds.map((winnerId) => {
-      const prize = prizes.find(p => p.id === prizeId);
+      const prize = prizesMap.get(prizeId);
       const winner = allUsers[winnerId];
       return { prize, winner, winnerId };
     }))
@@ -70,7 +73,7 @@ export default function WinnersPage() {
           const key = formatWinnerKey(prizeId, winnerId);
           const isNewWinner = !previousIds.includes(winnerId) || !displayedWinners.has(key);
           if (isNewWinner) {
-            const prize = prizes.find(p => p.id === prizeId);
+            const prize = prizesMap.get(prizeId);
             const winner = allUsers[winnerId];
 
             if (prize && winner) {
