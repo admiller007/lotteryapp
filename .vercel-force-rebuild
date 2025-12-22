@@ -1,0 +1,3 @@
+FORCE_REBUILD_TIMESTAMP=2025-12-22T16:42:00Z
+BUILD_CACHE_INVALIDATION=true
+# This file forces Vercel to perform a clean rebuild
