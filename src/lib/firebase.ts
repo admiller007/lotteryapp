@@ -3,6 +3,7 @@ import { getFirestore, Firestore } from 'firebase/firestore';
 import { getAuth, Auth } from 'firebase/auth';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 
+// Firebase Configuration - Updated 2025-12-22 to fix env var cache issue
 // Check if all required Firebase environment variables are present
 const requiredEnvVars = [
   'NEXT_PUBLIC_FIREBASE_API_KEY',
