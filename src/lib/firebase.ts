@@ -14,8 +14,14 @@ const requiredEnvVars = [
   'NEXT_PUBLIC_FIREBASE_APP_ID'
 ];
 
+// Check for missing environment variables at build time
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
 const isFirebaseConfigured = missingVars.length === 0;
+
+// Log configuration status during build (removed in production bundles)
+if (process.env.NODE_ENV !== 'production' && typeof window === 'undefined') {
+  console.log('[Firebase Config] Configured:', isFirebaseConfigured);
+}
 
 // Firebase configuration
 const firebaseConfig = isFirebaseConfigured ? {
