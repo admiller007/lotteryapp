@@ -48,24 +48,6 @@ export default function WinnersPage() {
     const currentWinners = { ...winners };
     const previousWinners = previousWinnersRef.current;
 
-    console.log('Winners page - checking for new winners:', {
-      currentWinners,
-      previousWinners,
-      allUsersKeys: Object.keys(allUsers),
-      prizesCount: prizes.length,
-      prizeIds: prizes.map(p => p.id),
-      userIds: Object.keys(allUsers),
-      isInitialLoad,
-      displayedWinnersSize: displayedWinners.size,
-      allWinnersLength: allWinners.length,
-      winnerResolveDebug: Object.entries(winners).map(([prizeId, winnerId]) => ({
-        prizeId,
-        winnerId,
-        userExists: !!allUsers[winnerId],
-        userName: allUsers[winnerId]?.name
-      }))
-    });
-
     // Skip slot machine on initial load - mark existing winners as displayed
     if (isInitialLoad && Object.keys(currentWinners).length > 0) {
       const initialKeys = new Set<string>();
@@ -73,7 +55,6 @@ export default function WinnersPage() {
         winnerIds.forEach((winnerId) => initialKeys.add(formatWinnerKey(prizeId, winnerId)));
       });
 
-      console.log('Initial load - marking existing winners as displayed:', Array.from(initialKeys));
       setDisplayedWinners(initialKeys);
       previousWinnersRef.current = currentWinners;
       setIsInitialLoad(false);
@@ -92,14 +73,6 @@ export default function WinnersPage() {
             const prize = prizes.find(p => p.id === prizeId);
             const winner = allUsers[winnerId];
 
-            console.log('New winner detected:', {
-              prizeId,
-              winnerId,
-              prize: prize?.name,
-              winner: winner?.name,
-              allUserIds: Object.keys(allUsers)
-            });
-
             if (prize && winner) {
               newWinners.push({
                 prizeId,
@@ -115,7 +88,6 @@ export default function WinnersPage() {
 
       // Add new winners to the queue
       if (newWinners.length > 0) {
-        console.log('Adding winners to queue:', newWinners.length);
         setWinnerQueue(prev => [...prev, ...newWinners]);
       }
     }
@@ -127,7 +99,6 @@ export default function WinnersPage() {
   useEffect(() => {
     if (winnerQueue.length > 0 && !showSlotMachine && !currentWinner) {
       const nextWinner = winnerQueue[0];
-      console.log('Processing next winner from queue:', nextWinner.winnerName, 'winning', nextWinner.prizeName);
       setCurrentWinner(nextWinner);
       setShowSlotMachine(true);
       setWinnerQueue(prev => prev.slice(1)); // Remove from queue

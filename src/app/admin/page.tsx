@@ -279,12 +279,11 @@ export default function AdminPage() {
   // Refresh Firebase prizes periodically to show latest allocations
   useEffect(() => {
     if (!isAdmin || !currentUser) return;
-    
+
     const interval = setInterval(() => {
-      console.log('Auto-refreshing Firebase prizes...');
       loadFirebasePrizes();
     }, 30000); // Refresh every 30 seconds instead of 10
-    
+
     return () => clearInterval(interval);
   }, [isAdmin, currentUser]);
 
@@ -572,19 +571,14 @@ export default function AdminPage() {
     // Detect delimiter (tab or comma)
     const firstLine = lines[0];
     const delimiter = firstLine.includes('\t') ? '\t' : ',';
-    
+
     const headers = firstLine.split(delimiter).map(h => h.trim().toLowerCase().replace(/\s+/g, ''));
-    
-    console.log('Detected delimiter:', delimiter === '\t' ? 'tab' : 'comma');
-    console.log('Parsed headers:', headers);
-    
+
     // Check for required headers (normalize spaces)
     const requiredHeaders = ['firstname', 'lastname', 'facilityname', 'tickets', 'pin'];
     const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
-    
+
     if (missingHeaders.length > 0) {
-      console.log('Missing headers:', missingHeaders);
-      console.log('Available headers:', headers);
       throw new Error(`Missing required columns: ${missingHeaders.join(', ')}`);
     }
     

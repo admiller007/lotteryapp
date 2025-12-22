@@ -242,8 +242,6 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
           
           // Update the prize entries in Firebase
           await updatePrizeEntries(prizeId, updatedEntries);
-          
-          console.log('Firebase allocation saved successfully');
         } catch (error) {
           console.error('Failed to save allocation to Firebase:', error);
         }
@@ -424,7 +422,6 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       import('@/lib/firebaseService').then(async ({ resetAuctionData }) => {
         try {
           await resetAuctionData();
-          console.log('Auction data reset in Firebase');
         } catch (error) {
           console.error('Failed to reset auction data in Firebase:', error);
         }
@@ -882,9 +879,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                 order: 3,
               })
             ]);
-            console.log('Demo prize tiers added to Firebase');
           }
-          
+
           // Add demo prizes if they don't exist
           if (existingPrizes.length === 0) {
             await Promise.all([
@@ -910,7 +906,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                 totalTicketsInPrize: 0
               })
             ]);
-            console.log('Demo prizes added to Firebase');
           }
         } catch (error) {
           console.error('Error adding demo prizes and tiers:', error);
@@ -927,7 +922,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         import('@/lib/firebaseService').then(async ({ getUserAllocations }) => {
           try {
             const firebaseAllocations = await getUserAllocations(state.currentUser!.id);
-            console.log('Loaded user allocations from Firebase:', firebaseAllocations);
             dispatch({
               type: 'LOAD_USER_ALLOCATIONS',
               payload: {
@@ -1057,9 +1051,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           // Only dispatch if the winners data has actually changed
           const currentWinnersString = JSON.stringify(state.winners);
           const newWinnersString = JSON.stringify(winnersData);
-          
+
           if (currentWinnersString !== newWinnersString) {
-            console.log('Winners updated from Firebase:', winnersData);
             dispatch({
               type: 'SYNC_WINNERS_FROM_FIREBASE',
               payload: winnersData
@@ -1114,22 +1107,18 @@ export const useFirebaseLogin = () => {
   
   const loginWithFirebase = async (firstName: string, lastName: string, facilityName: string, pin: string) => {
     const userName = `${firstName} ${lastName}`;
-    
-    console.log('Login attempt:', { firstName, lastName, facilityName, pin, userName });
-    
+
     try {
       const { getUserByCredentials, updateUser } = await import('@/lib/firebaseService');
       const firebaseUser = await getUserByCredentials(firstName, lastName, facilityName, pin);
-      
+
       if (!firebaseUser) {
-        console.log('Login failed - no matching user found in Firebase');
         dispatch({
           type: 'LOGIN_ERROR',
           payload: { message: 'Invalid credentials' }
         });
         return;
       }
-      console.log('Firebase user found:', firebaseUser);
       
       // If the user came from the party check-in link/QR, mark them as at_party
       const partyCheckInRequested = typeof window !== 'undefined' && localStorage.getItem(PARTY_CHECKIN_FLAG_KEY) === 'true';
