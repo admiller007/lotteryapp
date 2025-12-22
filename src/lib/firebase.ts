@@ -3,6 +3,7 @@ import { getFirestore, Firestore } from 'firebase/firestore';
 import { getAuth, Auth } from 'firebase/auth';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 
+// Firebase Configuration - Updated 2025-12-22 to fix env var cache issue
 // Check if all required Firebase environment variables are present
 const requiredEnvVars = [
   'NEXT_PUBLIC_FIREBASE_API_KEY',
@@ -13,8 +14,14 @@ const requiredEnvVars = [
   'NEXT_PUBLIC_FIREBASE_APP_ID'
 ];
 
+// Check for missing environment variables at build time
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
 const isFirebaseConfigured = missingVars.length === 0;
+
+// Log configuration status during build (removed in production bundles)
+if (process.env.NODE_ENV !== 'production' && typeof window === 'undefined') {
+  console.log('[Firebase Config] Configured:', isFirebaseConfigured);
+}
 
 // Firebase configuration
 const firebaseConfig = isFirebaseConfigured ? {
@@ -56,35 +63,71 @@ function ensureFirebaseInitialized(): void {
   }
 }
 
-// Create a proxy object to enable lazy initialization
-const createLazyProxy = <T extends object>(getter: () => T): T => {
-  return new Proxy({} as T, {
-    get(target, prop) {
-      const instance = getter();
-      return instance[prop as keyof T];
-    }
-  });
-};
-
-// Export lazy-initialized instances that only initialize when actually accessed
-export const db = createLazyProxy<Firestore>(() => {
+// Individual lazy initialization functions for each service
+// This pattern ensures unique initialization per service and forces fresh chunk generation
+function getFirestoreInstance(): Firestore {
   ensureFirebaseInitialized();
-  return _db!;
+  if (!_db) {
+    throw new Error('Firestore not initialized');
+  }
+  return _db;
+}
+
+function getAuthInstance(): Auth {
+  ensureFirebaseInitialized();
+  if (!_auth) {
+    throw new Error('Auth not initialized');
+  }
+  return _auth;
+}
+
+function getStorageInstance(): FirebaseStorage {
+  ensureFirebaseInitialized();
+  if (!_storage) {
+    throw new Error('Storage not initialized');
+  }
+  return _storage;
+}
+
+function getAppInstance(): FirebaseApp {
+  ensureFirebaseInitialized();
+  if (!_app) {
+    throw new Error('Firebase app not initialized');
+  }
+  return _app;
+}
+
+// Export lazy-initialized instances using individual Proxy implementations
+export const db = new Proxy({} as Firestore, {
+  get(target, prop) {
+    const instance = getFirestoreInstance();
+    const value = instance[prop as keyof Firestore];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
 });
 
-export const auth = createLazyProxy<Auth>(() => {
-  ensureFirebaseInitialized();
-  return _auth!;
+export const auth = new Proxy({} as Auth, {
+  get(target, prop) {
+    const instance = getAuthInstance();
+    const value = instance[prop as keyof Auth];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
 });
 
-export const storage = createLazyProxy<FirebaseStorage>(() => {
-  ensureFirebaseInitialized();
-  return _storage!;
+export const storage = new Proxy({} as FirebaseStorage, {
+  get(target, prop) {
+    const instance = getStorageInstance();
+    const value = instance[prop as keyof FirebaseStorage];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
 });
 
-const defaultApp = createLazyProxy<FirebaseApp>(() => {
-  ensureFirebaseInitialized();
-  return _app!;
+const defaultApp = new Proxy({} as FirebaseApp, {
+  get(target, prop) {
+    const instance = getAppInstance();
+    const value = instance[prop as keyof FirebaseApp];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
 });
 
 export default defaultApp;
