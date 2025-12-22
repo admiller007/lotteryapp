@@ -1,11 +1,11 @@
 
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAppContext } from '@/context/AppContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
-import { MinusCircle, PlusCircle, Send } from 'lucide-react';
+import { MinusCircle, PlusCircle } from 'lucide-react';
 
 interface TicketAllocatorProps {
   prizeId: string;
@@ -19,6 +19,8 @@ export default function TicketAllocator({ prizeId }: TicketAllocatorProps) {
   const currentAllocation = currentUser ? currentUser.allocatedTickets[prizeId] || 0 : 0;
   const [numTickets, setNumTickets] = useState(currentAllocation);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isAllocatingRef = useRef(false);
 
   // Only update from external sources if user hasn't interacted yet, or if the allocation actually changed
   useEffect(() => {
@@ -29,36 +31,63 @@ export default function TicketAllocator({ prizeId }: TicketAllocatorProps) {
     }
 
     const newAllocation = currentUser.allocatedTickets[prizeId] || 0;
-    
+
     // Only update if user hasn't interacted, or if the external value actually changed
     if (!hasUserInteracted || (hasUserInteracted && newAllocation !== numTickets && newAllocation !== 0)) {
       setNumTickets(newAllocation);
     }
   }, [currentUser?.allocatedTickets, prizeId]); // Remove currentUser from deps to avoid constant re-renders
 
+  // Auto-allocate tickets when numTickets changes (with debouncing)
+  useEffect(() => {
+    // Don't auto-allocate on initial load or if user hasn't interacted
+    if (!hasUserInteracted || !currentUser || isAllocatingRef.current) {
+      return;
+    }
+
+    // Clear any existing timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    // Set a new timer to allocate after 800ms of no changes
+    debounceTimerRef.current = setTimeout(() => {
+      if (numTickets < 0) {
+        toast({ title: "Invalid Input", description: "Number of tickets cannot be negative.", variant: "destructive" });
+        return;
+      }
+
+      const diff = numTickets - currentAllocation;
+      if (diff > remainingTickets) {
+        toast({ title: "Not Enough Tickets", description: `You only have ${remainingTickets} tickets remaining.`, variant: "destructive" });
+        setNumTickets(currentAllocation); // Reset to current allocation
+        return;
+      }
+
+      isAllocatingRef.current = true;
+      dispatch({
+        type: 'ALLOCATE_TICKETS',
+        payload: { prizeId, userId: currentUser.id, userName: currentUser.name, count: numTickets },
+      });
+
+      // Reset flag after a short delay to allow state to update
+      setTimeout(() => {
+        isAllocatingRef.current = false;
+      }, 100);
+    }, 800);
+
+    // Cleanup timer on unmount
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [numTickets, hasUserInteracted, currentUser, currentAllocation, remainingTickets, prizeId, dispatch]);
+
 
   if (!currentUser) {
     return <p className="text-xs text-muted-foreground text-center">Please log in to allocate tickets.</p>;
   }
-
-  const handleAllocate = () => {
-    if (numTickets < 0) {
-      toast({ title: "Invalid Input", description: "Number of tickets cannot be negative.", variant: "destructive" });
-      return;
-    }
-
-    const diff = numTickets - currentAllocation;
-    if (diff > remainingTickets) {
-      toast({ title: "Not Enough Tickets", description: `You only have ${remainingTickets} tickets remaining.`, variant: "destructive" });
-      return;
-    }
-    
-    dispatch({
-      type: 'ALLOCATE_TICKETS',
-      payload: { prizeId, userId: currentUser.id, userName: currentUser.name, count: numTickets },
-    });
-    toast({ title: "Tickets Allocated!", description: `You've allocated ${numTickets} tickets to this prize.` });
-  };
 
   const maxAffordable = currentAllocation + remainingTickets;
 
@@ -112,7 +141,7 @@ export default function TicketAllocator({ prizeId }: TicketAllocatorProps) {
 
   return (
     <div className="w-full space-y-2">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-center gap-2">
         <Button variant="outline" size="icon" onClick={handleDecrement} disabled={numTickets <= 0}>
           <MinusCircle className="h-4 w-4" />
         </Button>
@@ -128,9 +157,6 @@ export default function TicketAllocator({ prizeId }: TicketAllocatorProps) {
         />
         <Button variant="outline" size="icon" onClick={handleIncrement} disabled={numTickets >= maxAffordable}>
           <PlusCircle className="h-4 w-4" />
-        </Button>
-        <Button onClick={handleAllocate} className="flex-grow bg-accent hover:bg-accent/90 text-accent-foreground">
-          <Send className="h-4 w-4 mr-2"/> Allocate
         </Button>
       </div>
       <p className="text-xs text-muted-foreground text-center">
