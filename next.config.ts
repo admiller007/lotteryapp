@@ -1,10 +1,19 @@
 import type {NextConfig} from 'next';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 const nextConfig: NextConfig = {
   /* config options here */
   // Force fresh build - updated 2025-12-22 to fix env var caching issue
+  // Read cache-busting file to ensure fresh builds
   generateBuildId: async () => {
-    return `build-${Date.now()}`;
+    try {
+      const cacheBuster = readFileSync(join(process.cwd(), '.vercel-force-rebuild'), 'utf-8');
+      const timestamp = cacheBuster.match(/FORCE_REBUILD_TIMESTAMP=(.+)/)?.[1] || Date.now();
+      return `build-${timestamp}-${Date.now()}`;
+    } catch {
+      return `build-${Date.now()}`;
+    }
   },
   typescript: {
     ignoreBuildErrors: true,

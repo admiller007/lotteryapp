@@ -1,4 +1,5 @@
 // Firebase configuration - environment variables are injected at build time
+// CACHE_BUST: 2025-12-22T16:42:00Z - Force complete rebuild
 export const requiredEnvVars = [
   'NEXT_PUBLIC_FIREBASE_API_KEY',
   'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN',
