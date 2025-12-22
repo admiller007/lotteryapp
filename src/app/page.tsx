@@ -23,23 +23,17 @@ export default function HomePage() {
           getPrizes(),
           getPrizeTiers()
         ]);
-        
-        console.log('Loaded Firebase prizes:', firebasePrizes);
-        console.log('Loaded Firebase prize tiers:', firebasePrizeTiers);
-        
+
         // Convert and update prizes
         const appPrizes = firebasePrizes.map(convertFirebasePrizeToAppPrize);
-        console.log('Converted to app prizes:', appPrizes);
-        console.log('Sample imageUrl from first prize:', appPrizes[0]?.imageUrl);
-        
+
         dispatch({
           type: 'SET_FIREBASE_PRIZES',
           payload: appPrizes
         });
-        
+
         // Convert and update prize tiers
         const appPrizeTiers = firebasePrizeTiers.map(convertFirebasePrizeTierToAppTier);
-        console.log('Converted to app prize tiers:', appPrizeTiers);
         
         dispatch({
           type: 'SET_FIREBASE_PRIZE_TIERS',

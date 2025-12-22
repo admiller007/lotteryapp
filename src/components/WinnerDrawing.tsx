@@ -190,15 +190,11 @@ export default function WinnerDrawing() {
   };
 
   const handleRandomlyAllocateTickets = async () => {
-    console.log('Current allUsers state:', state.allUsers);
-    console.log('All user entries:', Object.entries(state.allUsers));
-
     // First try to load users from Firebase if local state is empty
     if (Object.keys(state.allUsers).length <= 2) { // Only admin users
       try {
         const { getUsers } = await import('@/lib/firebaseService');
         const firebaseUsers = await getUsers();
-        console.log('Loaded Firebase users:', firebaseUsers);
         
         if (firebaseUsers.length > 0) {
           dispatch({
@@ -235,8 +231,6 @@ export default function WinnerDrawing() {
       // Exclude admin users (assuming admin users have 'ADMIN' in their ID or name)
       return !userId.includes('ADMIN') && !user.name?.includes('ADMIN');
     });
-
-    console.log('Non-admin users found:', nonAdminUsers);
 
     if (nonAdminUsers.length === 0) {
       toast({

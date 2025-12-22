@@ -252,7 +252,6 @@ export const resetAuctionData = async (): Promise<void> => {
     });
 
     await batch.commit();
-    console.log('Auction data reset in Firebase');
   } catch (error) {
     console.error('Error resetting auction data:', error);
     throw error;
@@ -557,7 +556,6 @@ export const saveWinner = async (prizeId: string, winnerId: string): Promise<voi
       winnerId,
       timestamp: Timestamp.now()
     });
-    console.log('Winner saved to Firebase:', { prizeId, winnerId });
   } catch (error) {
     console.error('Error saving winner to Firebase:', error);
     throw error;
@@ -586,9 +584,8 @@ export const saveWinners = async (winners: Record<string, string[]>): Promise<vo
         });
       });
     });
-    
+
     await batch.commit();
-    console.log('Winners saved to Firebase:', winners);
   } catch (error) {
     console.error('Error saving winners to Firebase:', error);
     throw error;
