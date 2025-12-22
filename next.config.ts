@@ -2,6 +2,10 @@ import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
   /* config options here */
+  // Force fresh build - updated 2025-12-22 to fix env var caching issue
+  generateBuildId: async () => {
+    return `build-${Date.now()}`;
+  },
   typescript: {
     ignoreBuildErrors: true,
   },
