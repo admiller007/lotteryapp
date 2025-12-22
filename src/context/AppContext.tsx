@@ -1049,10 +1049,40 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           });
           
           // Only dispatch if the winners data has actually changed
-          const currentWinnersString = JSON.stringify(state.winners);
-          const newWinnersString = JSON.stringify(winnersData);
+          const isWinnersDataEqual = (
+            current: Record<string, string[]>,
+            updated: Record<string, string[]>
+          ): boolean => {
+            const currentKeys = Object.keys(current);
+            const updatedKeys = Object.keys(updated);
 
-          if (currentWinnersString !== newWinnersString) {
+            if (currentKeys.length !== updatedKeys.length) {
+              return false;
+            }
+
+            for (const key of currentKeys) {
+              if (!updated.hasOwnProperty(key)) {
+                return false;
+              }
+
+              const currentArray = current[key];
+              const updatedArray = updated[key];
+
+              if (currentArray.length !== updatedArray.length) {
+                return false;
+              }
+
+              for (let i = 0; i < currentArray.length; i++) {
+                if (currentArray[i] !== updatedArray[i]) {
+                  return false;
+                }
+              }
+            }
+
+            return true;
+          };
+
+          if (!isWinnersDataEqual(state.winners, winnersData)) {
             dispatch({
               type: 'SYNC_WINNERS_FROM_FIREBASE',
               payload: winnersData
