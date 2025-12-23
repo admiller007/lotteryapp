@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { isFirebaseConfigured, missingVars, requiredEnvVars } from '@/lib/firebase/config';
+import { getIsFirebaseConfigured, getMissingVars, requiredEnvVars } from '@/lib/firebase/config';
 
 interface DiagnosticResult {
   step: string;
@@ -52,8 +52,9 @@ export default function FirebaseDebugPage() {
       return; // Stop here if env vars are missing
     }
 
-    // Step 2: Check Firebase configuration
-    if (isFirebaseConfigured) {
+    // Step 2: Check Firebase configuration (at runtime)
+    const isConfigured = getIsFirebaseConfigured();
+    if (isConfigured) {
       results.push({
         step: 'Firebase Configuration',
         status: 'success',
@@ -61,11 +62,12 @@ export default function FirebaseDebugPage() {
         details: `Project ID: ${envVars.NEXT_PUBLIC_FIREBASE_PROJECT_ID}`
       });
     } else {
+      const missing = getMissingVars();
       results.push({
         step: 'Firebase Configuration',
         status: 'error',
         message: 'Firebase configuration failed',
-        details: `Missing: ${missingVars.join(', ')}`
+        details: `Missing: ${missing.join(', ')}`
       });
       setDiagnostics(results);
       setIsRunning(false);
