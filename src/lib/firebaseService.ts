@@ -715,3 +715,60 @@ export const debugWinnersAndUsers = async (): Promise<void> => {
     console.error('Error debugging winners and users:', error);
   }
 };
+
+// Get all winners with complete user and prize information
+export interface WinnerExportData {
+  prizeName: string;
+  prizeDescription: string;
+  winnerFirstName: string;
+  winnerLastName: string;
+  winnerEmployeeId: string;
+  winnerFacility: string;
+  timestamp: Date;
+}
+
+export const getWinnersForExport = async (): Promise<WinnerExportData[]> => {
+  try {
+    // Get all winners
+    const winnersSnapshot = await getDocs(collection(db, 'winners'));
+    const winners: any[] = [];
+    winnersSnapshot.forEach(doc => {
+      const data = doc.data();
+      winners.push({ docId: doc.id, ...data });
+    });
+
+    // Get all users
+    const users = await getUsers();
+
+    // Get all prizes
+    const prizes = await getPrizes();
+
+    // Combine the data
+    const exportData: WinnerExportData[] = [];
+
+    winners.forEach(winner => {
+      const user = users.find(u => u.id === winner.winnerId || u.employeeId === winner.winnerId);
+      const prize = prizes.find(p => p.id === winner.prizeId);
+
+      if (user && prize) {
+        exportData.push({
+          prizeName: prize.name,
+          prizeDescription: prize.description,
+          winnerFirstName: user.firstName,
+          winnerLastName: user.lastName,
+          winnerEmployeeId: user.employeeId,
+          winnerFacility: user.facilityName,
+          timestamp: winner.timestamp?.toDate() || new Date()
+        });
+      }
+    });
+
+    // Sort by timestamp (newest first)
+    exportData.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+    return exportData;
+  } catch (error) {
+    console.error('Error fetching winners for export:', error);
+    throw error;
+  }
+};
