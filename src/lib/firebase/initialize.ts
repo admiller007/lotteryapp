@@ -2,7 +2,7 @@ import { initializeApp, FirebaseApp } from 'firebase/app';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getAuth, Auth } from 'firebase/auth';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
-import { firebaseConfig, isFirebaseConfigured, missingVars } from './config';
+import { firebaseConfig, getIsFirebaseConfigured, getMissingVars } from './config';
 
 // Singleton instances
 let _app: FirebaseApp | null = null;
@@ -11,9 +11,13 @@ let _auth: Auth | null = null;
 let _storage: FirebaseStorage | null = null;
 
 export function ensureFirebaseInitialized(): void {
-  if (!isFirebaseConfigured) {
+  // Check configuration at runtime
+  const isConfigured = getIsFirebaseConfigured();
+
+  if (!isConfigured) {
+    const missing = getMissingVars();
     const errorMessage =
-      `Missing required Firebase environment variables: ${missingVars.join(', ')}\n` +
+      `Missing required Firebase environment variables: ${missing.join(', ')}\n` +
       'Please check your .env.local file or Vercel environment variables configuration.\n\n' +
       'To fix this:\n' +
       '1. Copy .env.example to .env.local\n' +
@@ -24,7 +28,7 @@ export function ensureFirebaseInitialized(): void {
     throw new Error(errorMessage);
   }
 
-  if (!_app && firebaseConfig) {
+  if (!_app) {
     _app = initializeApp(firebaseConfig);
     _db = getFirestore(_app);
     _auth = getAuth(_app);
