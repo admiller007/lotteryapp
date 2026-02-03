@@ -10,13 +10,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { PlusCircle, Edit3, Trash2, Play, RefreshCcw, Award, ShieldAlert, Upload, Users, Gift, Layers, Ticket, Trophy, Camera, UserPlus, X, Bug } from 'lucide-react';
+import { PlusCircle, Edit3, Trash2, Play, RefreshCcw, Award, ShieldAlert, Upload, Users, Gift, Layers, Ticket, Trophy, Camera, UserPlus, X, Bug, BarChart3 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { addUsers, getUsers, type FirebaseUser, addPrize, getPrizes, updatePrize, deletePrize, convertFirebasePrizeToAppPrize, type FirebasePrize, deleteUserAndCleanup, adminUploadUserProfilePicture, adminRemoveUserProfilePicture, debugWinnersAndUsers, addUser, updateUser } from '@/lib/firebaseService';
 import FirebasePrizeManager from '@/components/FirebasePrizeManager';
 import WinnerDrawing from '@/components/WinnerDrawing';
+import AnalyticsDashboard from '@/components/AnalyticsDashboard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -682,8 +683,9 @@ export default function AdminPage() {
   return (
     <div className="space-y-8">
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
           <TabsTrigger value="drawing">Drawing</TabsTrigger>
           <TabsTrigger value="inventory">Inventory</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
@@ -802,6 +804,10 @@ export default function AdminPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="analytics">
+          <AnalyticsDashboard firebaseUsers={firebaseUsers} />
         </TabsContent>
 
         <TabsContent value="drawing">
