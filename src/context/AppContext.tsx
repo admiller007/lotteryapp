@@ -649,7 +649,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       const updatedWinners = { ...state.winners };
 
       // Ensure the kept prize is assigned to the user
-      updatedWinners[keepPrizeId] = userId;
+      updatedWinners[keepPrizeId] = [userId];
 
       // Vacate the dropped prize before redrawing
       delete updatedWinners[dropPrizeId];
@@ -665,7 +665,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         );
 
         if (winnerId && !conflictPrizeId) {
-          updatedWinners[dropPrizeId] = winnerId;
+          updatedWinners[dropPrizeId] = [winnerId];
         } else if (winnerId && conflictPrizeId) {
           nextConflict = {
             id: `conflict-${Date.now()}`,
