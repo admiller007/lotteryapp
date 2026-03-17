@@ -73,7 +73,7 @@ export default function WinnersPage() {
 
     // Find newly drawn winners (only after initial load)
     if (!isInitialLoad) {
-      const newWinners = [];
+      const newWinners: Array<{ prizeId: string; winnerId: string; winnerName: string; prizeName: string; winnerProfilePicture?: string }> = [];
       for (const [prizeId, winnerIds] of Object.entries(currentWinners)) {
         const previousIds = previousWinners[prizeId] || [];
         winnerIds.forEach((winnerId) => {
