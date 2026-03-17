@@ -715,3 +715,212 @@ export const debugWinnersAndUsers = async (): Promise<void> => {
     console.error('Error debugging winners and users:', error);
   }
 };
+
+// ==================== Test Data Helpers ====================
+
+const TEST_USER_PREFIX = 'TEST-';
+const TEST_PRIZE_PREFIX = 'Test Prize';
+const ADMIN_IDS = ['ADMIN001', 'DEV007'];
+
+export const seedTestData = async (options?: {
+  userCount?: number;
+  prizeCount?: number;
+}): Promise<{ usersCreated: number; prizesCreated: number; tiersCreated: number }> => {
+  const userCount = options?.userCount ?? 10;
+  const result = { usersCreated: 0, prizesCreated: 0, tiersCreated: 0 };
+
+  // 1. Seed tiers if none exist
+  const existingTiers = await getPrizeTiers();
+  let tierIds: Record<string, string> = {};
+  if (existingTiers.length === 0) {
+    const tiersToCreate = [
+      { name: 'Grand Prize', description: 'Top-tier prizes', color: '#FFD700', order: 1 },
+      { name: 'Premium', description: 'Premium prizes', color: '#C0C0C0', order: 2 },
+      { name: 'Standard', description: 'Standard prizes', color: '#CD7F32', order: 3 },
+    ];
+    for (const tier of tiersToCreate) {
+      const id = await addPrizeTier(tier);
+      tierIds[tier.name] = id;
+      result.tiersCreated++;
+    }
+  } else {
+    existingTiers.forEach(t => { tierIds[t.name] = t.id!; });
+  }
+
+  // 2. Seed test users if none exist
+  const existingUsers = await getUsers();
+  const existingTestUsers = existingUsers.filter(u => u.employeeId.startsWith(TEST_USER_PREFIX));
+  if (existingTestUsers.length === 0) {
+    const testUsers = Array.from({ length: userCount }, (_, i) => ({
+      firstName: 'Test',
+      lastName: `User ${i + 1}`,
+      employeeId: `${TEST_USER_PREFIX}${String(i + 1).padStart(3, '0')}`,
+      facilityName: 'Test Facility',
+      tickets: 10,
+      pin: '1111',
+      status: 'working' as const,
+    }));
+    await addUsers(testUsers);
+    result.usersCreated = testUsers.length;
+  }
+
+  // 3. Seed test prizes if none exist
+  const existingPrizes = await getPrizes();
+  const existingTestPrizes = existingPrizes.filter(p => p.name.startsWith(TEST_PRIZE_PREFIX));
+  if (existingTestPrizes.length === 0) {
+    const tierNames = Object.keys(tierIds);
+    const grandTierId = tierIds['Grand Prize'] || tierNames[0] && tierIds[tierNames[0]];
+    const premiumTierId = tierIds['Premium'] || tierNames[1] && tierIds[tierNames[1]];
+    const standardTierId = tierIds['Standard'] || tierNames[2] && tierIds[tierNames[2]];
+
+    const prizesToCreate = [
+      { name: 'Test Prize 1 - Grand', description: 'A grand test prize', imageUrl: '', entries: [], totalTicketsInPrize: 0, tierId: grandTierId, numberOfWinners: 1 },
+      { name: 'Test Prize 2 - Premium A', description: 'A premium test prize', imageUrl: '', entries: [], totalTicketsInPrize: 0, tierId: premiumTierId, numberOfWinners: 1 },
+      { name: 'Test Prize 3 - Premium B', description: 'Another premium test prize', imageUrl: '', entries: [], totalTicketsInPrize: 0, tierId: premiumTierId, numberOfWinners: 2 },
+      { name: 'Test Prize 4 - Standard A', description: 'A standard test prize', imageUrl: '', entries: [], totalTicketsInPrize: 0, tierId: standardTierId, numberOfWinners: 1 },
+      { name: 'Test Prize 5 - Standard B', description: 'Another standard test prize', imageUrl: '', entries: [], totalTicketsInPrize: 0, tierId: standardTierId, numberOfWinners: 1 },
+    ];
+    for (const prize of prizesToCreate) {
+      await addPrize(prize);
+      result.prizesCreated++;
+    }
+  }
+
+  return result;
+};
+
+export const bulkAllocateTicketsForTest = async (): Promise<{ allocationsCreated: number }> => {
+  // Fetch current users and prizes from Firebase
+  const users = await getUsers();
+  const prizes = await getPrizes();
+
+  const nonAdminUsers = users.filter(u => !ADMIN_IDS.includes(u.employeeId));
+  if (nonAdminUsers.length === 0 || prizes.length === 0) {
+    return { allocationsCreated: 0 };
+  }
+
+  // Build a map of prize entries: prizeId -> { userId -> numTickets }
+  const prizeEntriesMap: Record<string, Record<string, number>> = {};
+  prizes.forEach(p => {
+    prizeEntriesMap[p.id!] = {};
+    (p.entries || []).forEach(e => {
+      prizeEntriesMap[p.id!][e.userId] = e.numTickets;
+    });
+  });
+
+  let allocationsCreated = 0;
+
+  for (const user of nonAdminUsers) {
+    const totalTickets = user.tickets || 10;
+    let remainingTickets = totalTickets;
+    const userId = user.employeeId;
+    const userName = `${user.firstName} ${user.lastName}`;
+
+    // Pick 1-4 random prizes
+    const maxPrizes = Math.min(prizes.length, Math.ceil(Math.random() * 3) + 1);
+    const shuffled = [...prizes].sort(() => Math.random() - 0.5);
+    const selectedPrizes = shuffled.slice(0, maxPrizes);
+
+    for (let i = 0; i < selectedPrizes.length; i++) {
+      if (remainingTickets <= 0) break;
+      const prize = selectedPrizes[i];
+      const prizeId = prize.id!;
+
+      let ticketsForPrize: number;
+      if (i === selectedPrizes.length - 1) {
+        ticketsForPrize = remainingTickets;
+      } else {
+        const maxForThis = Math.floor(remainingTickets * 0.5);
+        ticketsForPrize = Math.max(1, Math.floor(Math.random() * maxForThis) + 1);
+      }
+
+      // Update in-memory map
+      prizeEntriesMap[prizeId][userId] = (prizeEntriesMap[prizeId][userId] || 0) + ticketsForPrize;
+      remainingTickets -= ticketsForPrize;
+
+      // Write allocation to Firebase
+      await allocateTickets({
+        lotteryId: 'default',
+        prizeId,
+        userId,
+        userName,
+        tickets: prizeEntriesMap[prizeId][userId],
+        timestamp: new Date().toISOString(),
+      });
+      allocationsCreated++;
+    }
+  }
+
+  // Batch update all prize entries
+  for (const prize of prizes) {
+    const entriesMap = prizeEntriesMap[prize.id!];
+    const entries = Object.entries(entriesMap)
+      .filter(([, numTickets]) => numTickets > 0)
+      .map(([userId, numTickets]) => ({ userId, numTickets }));
+    await updatePrizeEntries(prize.id!, entries);
+  }
+
+  return { allocationsCreated };
+};
+
+export const clearTestData = async (): Promise<void> => {
+  const batch = writeBatch(db);
+
+  // 1. Find and delete test users
+  const usersSnap = await getDocs(collection(db, 'users'));
+  const testUserDocIds: string[] = [];
+  const testEmployeeIds: string[] = [];
+  usersSnap.forEach(d => {
+    const data = d.data();
+    if (data.employeeId && data.employeeId.startsWith(TEST_USER_PREFIX)) {
+      batch.delete(d.ref);
+      testUserDocIds.push(d.id);
+      testEmployeeIds.push(data.employeeId);
+    }
+  });
+
+  // 2. Find and delete test prizes
+  const prizesSnap = await getDocs(collection(db, 'prizes'));
+  const testPrizeIds: string[] = [];
+  prizesSnap.forEach(d => {
+    const data = d.data();
+    if (data.name && data.name.startsWith(TEST_PRIZE_PREFIX)) {
+      batch.delete(d.ref);
+      testPrizeIds.push(d.id);
+    }
+  });
+
+  // 3. Delete allocations for test users
+  const allocsSnap = await getDocs(collection(db, 'allocations'));
+  allocsSnap.forEach(d => {
+    const data = d.data();
+    if (testEmployeeIds.includes(data.userId) || testPrizeIds.includes(data.prizeId)) {
+      batch.delete(d.ref);
+    }
+  });
+
+  // 4. Delete winners for test prizes/users
+  const winnersSnap = await getDocs(collection(db, 'winners'));
+  winnersSnap.forEach(d => {
+    const data = d.data();
+    if (testPrizeIds.includes(data.prizeId) || testEmployeeIds.includes(data.winnerId)) {
+      batch.delete(d.ref);
+    }
+  });
+
+  // 5. Remove test user entries from non-test prizes
+  prizesSnap.forEach(d => {
+    const data = d.data();
+    if (!data.name?.startsWith(TEST_PRIZE_PREFIX)) {
+      const entries = (data.entries || []).filter(
+        (e: { userId: string }) => !testEmployeeIds.includes(e.userId)
+      );
+      if (entries.length !== (data.entries || []).length) {
+        const totalTicketsInPrize = entries.reduce((sum: number, e: { numTickets: number }) => sum + e.numTickets, 0);
+        batch.update(d.ref, { entries, totalTicketsInPrize });
+      }
+    }
+  });
+
+  await batch.commit();
+};

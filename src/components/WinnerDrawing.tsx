@@ -189,110 +189,78 @@ export default function WinnerDrawing() {
     }
   };
 
-  const handleRandomlyAllocateTickets = async () => {
-    // First try to load users from Firebase if local state is empty
-    if (Object.keys(state.allUsers).length <= 2) { // Only admin users
-      try {
-        const { getUsers } = await import('@/lib/firebaseService');
-        const firebaseUsers = await getUsers();
-        
-        if (firebaseUsers.length > 0) {
-          dispatch({
-            type: 'UPLOAD_USERS',
-            payload: firebaseUsers.map(user => ({
-              firstName: user.firstName,
-              lastName: user.lastName,
-              employeeId: user.employeeId,
-              facilityName: user.facilityName,
-              tickets: user.tickets,
-              pin: user.pin
-            }))
-          });
-          
-          toast({
-            title: "Users Loaded",
-            description: `Loaded ${firebaseUsers.length} users from Firebase. Try again.`,
-          });
-          return;
-        }
-      } catch (error) {
-        console.error('Error loading Firebase users:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load users from Firebase.",
-          variant: "destructive"
-        });
-        return;
-      }
-    }
+  const [testLoading, setTestLoading] = useState<string | null>(null);
 
-    // Get all non-admin users
-    const nonAdminUsers = Object.entries(state.allUsers).filter(([userId, user]) => {
-      // Exclude admin users (assuming admin users have 'ADMIN' in their ID or name)
-      return !userId.includes('ADMIN') && !user.name?.includes('ADMIN');
-    });
-
-    if (nonAdminUsers.length === 0) {
+  const handleSeedTestData = async () => {
+    setTestLoading('seed');
+    try {
+      const { seedTestData } = await import('@/lib/firebaseService');
+      const result = await seedTestData();
+      const parts = [];
+      if (result.tiersCreated) parts.push(`${result.tiersCreated} tiers`);
+      if (result.usersCreated) parts.push(`${result.usersCreated} users`);
+      if (result.prizesCreated) parts.push(`${result.prizesCreated} prizes`);
       toast({
-        title: "No Users Found",
-        description: "No non-admin users found to allocate tickets. Try loading users first.",
-        variant: "destructive"
+        title: "Test Data Seeded",
+        description: parts.length > 0 ? `Created ${parts.join(', ')}.` : 'Test data already exists.',
       });
-      return;
+    } catch (error) {
+      console.error('Error seeding test data:', error);
+      toast({ title: "Error", description: "Failed to seed test data.", variant: "destructive" });
+    } finally {
+      setTestLoading(null);
     }
+  };
 
-    if (prizes.length === 0) {
+  const handleBulkAllocate = async () => {
+    setTestLoading('allocate');
+    try {
+      const { bulkAllocateTicketsForTest } = await import('@/lib/firebaseService');
+      const result = await bulkAllocateTicketsForTest();
       toast({
-        title: "No Prizes Found", 
-        description: "No prizes available for ticket allocation.",
-        variant: "destructive"
+        title: "Tickets Allocated",
+        description: result.allocationsCreated > 0
+          ? `Created ${result.allocationsCreated} allocations across all prizes.`
+          : 'No users or prizes found. Seed test data first.',
       });
-      return;
+    } catch (error) {
+      console.error('Error bulk allocating:', error);
+      toast({ title: "Error", description: "Failed to allocate tickets.", variant: "destructive" });
+    } finally {
+      setTestLoading(null);
     }
+  };
 
-    // For each user, randomly distribute their tickets across prizes
-    nonAdminUsers.forEach(([userId, user]) => {
-      const totalTickets = user.tickets || 10; // Default to 10 if not specified
-      let remainingTickets = totalTickets;
-      
-      // Randomly select how many prizes this user will enter
-      const maxPrizes = Math.min(prizes.length, Math.ceil(Math.random() * 3) + 1); // 1-4 prizes max
-      const selectedPrizes = prizes
-        .sort(() => Math.random() - 0.5) // Shuffle
-        .slice(0, maxPrizes);
-
-      selectedPrizes.forEach((prize, index) => {
-        if (remainingTickets <= 0) return;
-        
-        // For the last prize, use all remaining tickets
-        // For others, use 1-50% of remaining tickets
-        let ticketsForThisPrize;
-        if (index === selectedPrizes.length - 1) {
-          ticketsForThisPrize = remainingTickets;
-        } else {
-          const maxForThis = Math.floor(remainingTickets * 0.5);
-          ticketsForThisPrize = Math.max(1, Math.floor(Math.random() * maxForThis) + 1);
-        }
-        
-        // Allocate tickets to this prize
-        dispatch({
-          type: 'ALLOCATE_TICKETS',
-          payload: {
-            prizeId: prize.id,
-            userId: userId,
-            userName: user.name || 'Unknown',
-            count: ticketsForThisPrize
-          }
-        });
-        
-        remainingTickets -= ticketsForThisPrize;
+  const handleFullTestSetup = async () => {
+    setTestLoading('full');
+    try {
+      const { seedTestData, bulkAllocateTicketsForTest } = await import('@/lib/firebaseService');
+      const seedResult = await seedTestData();
+      const allocResult = await bulkAllocateTicketsForTest();
+      toast({
+        title: "Full Test Setup Complete",
+        description: `Seeded ${seedResult.usersCreated} users, ${seedResult.prizesCreated} prizes, ${seedResult.tiersCreated} tiers. Created ${allocResult.allocationsCreated} allocations.`,
       });
-    });
+    } catch (error) {
+      console.error('Error in full test setup:', error);
+      toast({ title: "Error", description: "Failed to complete test setup.", variant: "destructive" });
+    } finally {
+      setTestLoading(null);
+    }
+  };
 
-    toast({
-      title: "Tickets Allocated!",
-      description: `Randomly allocated tickets for ${nonAdminUsers.length} users across ${prizes.length} prizes.`
-    });
+  const handleClearTestData = async () => {
+    setTestLoading('clear');
+    try {
+      const { clearTestData } = await import('@/lib/firebaseService');
+      await clearTestData();
+      toast({ title: "Test Data Cleared", description: "All test users, prizes, and allocations removed." });
+    } catch (error) {
+      console.error('Error clearing test data:', error);
+      toast({ title: "Error", description: "Failed to clear test data.", variant: "destructive" });
+    } finally {
+      setTestLoading(null);
+    }
   };
 
   // Watch for winner updates and update slot machine display
@@ -612,23 +580,65 @@ export default function WinnerDrawing() {
               </div>
             </div>
           </div>
-          {/* Random Ticket Allocation (Testing) */}
+          {/* Testing Helpers */}
           <div className="space-y-3">
             <h3 className="text-lg font-semibold flex items-center gap-2">
               <Zap className="h-4 w-4" />
               Testing Helper
             </h3>
             <p className="text-sm text-muted-foreground">
-              Randomly allocate tickets from all non-admin users across all prizes for testing.
+              Seed test data and randomly allocate tickets to test the full lottery flow end-to-end.
             </p>
-            <Button 
-              onClick={handleRandomlyAllocateTickets}
-              variant="outline"
-              className="w-full"
-            >
-              <Zap className="h-4 w-4 mr-2" />
-              Randomly Allocate All Tickets
-            </Button>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <Button
+                onClick={handleSeedTestData}
+                variant="outline"
+                disabled={testLoading !== null}
+              >
+                <Users className="h-4 w-4 mr-2" />
+                {testLoading === 'seed' ? 'Seeding...' : 'Seed Test Data'}
+              </Button>
+              <Button
+                onClick={handleBulkAllocate}
+                variant="outline"
+                disabled={testLoading !== null}
+              >
+                <Shuffle className="h-4 w-4 mr-2" />
+                {testLoading === 'allocate' ? 'Allocating...' : 'Allocate Tickets'}
+              </Button>
+              <Button
+                onClick={handleFullTestSetup}
+                variant="default"
+                disabled={testLoading !== null}
+              >
+                <Zap className="h-4 w-4 mr-2" />
+                {testLoading === 'full' ? 'Setting up...' : 'Full Test Setup'}
+              </Button>
+            </div>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button
+                  variant="destructive"
+                  className="w-full"
+                  disabled={testLoading !== null}
+                >
+                  {testLoading === 'clear' ? 'Clearing...' : 'Clear Test Data'}
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Clear Test Data?</DialogTitle>
+                </DialogHeader>
+                <p className="text-sm text-muted-foreground">
+                  This will remove all test users (TEST-*), test prizes, and their associated allocations and winners.
+                </p>
+                <div className="flex gap-2 justify-end">
+                  <Button variant="destructive" onClick={handleClearTestData}>
+                    Confirm Clear
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </CardContent>
       </Card>
