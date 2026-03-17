@@ -1,7 +1,7 @@
 
 "use client";
 import type { Dispatch, ReactNode } from 'react';
-import React, { createContext, useContext, useReducer, useMemo, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useMemo, useEffect, useRef } from 'react';
 import type { Prize, AppUser, AuctionContextState, AuctionAction, PrizeTier } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
 import { PARTY_CHECKIN_FLAG_KEY } from '@/lib/partyCheckIn';
@@ -649,7 +649,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       const updatedWinners = { ...state.winners };
 
       // Ensure the kept prize is assigned to the user
-      updatedWinners[keepPrizeId] = userId;
+      updatedWinners[keepPrizeId] = [userId];
 
       // Vacate the dropped prize before redrawing
       delete updatedWinners[dropPrizeId];
@@ -665,7 +665,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         );
 
         if (winnerId && !conflictPrizeId) {
-          updatedWinners[dropPrizeId] = winnerId;
+          updatedWinners[dropPrizeId] = [winnerId];
         } else if (winnerId && conflictPrizeId) {
           nextConflict = {
             id: `conflict-${Date.now()}`,
@@ -796,6 +796,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [state, dispatch] = useReducer(auctionReducer, loadPersistedState());
   const [isHydrated, setIsHydrated] = React.useState(false);
   const [allocationsLoaded, setAllocationsLoaded] = React.useState<string | null>(null);
+  const winnersRef = useRef(state.winners);
 
   // Hydrate from localStorage on client side only
   React.useEffect(() => {
@@ -959,9 +960,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   }, [state.currentUser, state.prizes, state.winners, state.isAuctionOpen, state.allUsers, state.prizeTiers, state.pendingConflict, state.drawsPaused]);
 
   // Load Firebase data on mount and set up real-time listeners
+  // Keep winnersRef in sync with latest state so the Firebase listener
+  // always compares against the current value (avoids stale closure).
+  useEffect(() => {
+    winnersRef.current = state.winners;
+  }, [state.winners]);
+
   React.useEffect(() => {
     let winnersUnsubscribe: (() => void) | null = null;
-    
+
     const setupFirebaseData = async () => {
       try {
         // Load Firebase prizes and users first
@@ -1082,7 +1089,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             return true;
           };
 
-          if (!isWinnersDataEqual(state.winners, winnersData)) {
+          if (!isWinnersDataEqual(winnersRef.current, winnersData)) {
             dispatch({
               type: 'SYNC_WINNERS_FROM_FIREBASE',
               payload: winnersData

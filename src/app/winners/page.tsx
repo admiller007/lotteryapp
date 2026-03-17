@@ -21,6 +21,7 @@ export default function WinnersPage() {
     winnerProfilePicture?: string;
   } | null>(null);
   const [displayedWinners, setDisplayedWinners] = useState<Set<string>>(new Set());
+  const displayedWinnersRef = useRef<Set<string>>(displayedWinners);
   const previousWinnersRef = useRef<Record<string, string[]>>({});
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [winnerQueue, setWinnerQueue] = useState<Array<{
@@ -46,6 +47,11 @@ export default function WinnersPage() {
     }))
     .filter(item => item.prize && item.winner);
 
+  // Keep displayedWinnersRef in sync
+  useEffect(() => {
+    displayedWinnersRef.current = displayedWinners;
+  }, [displayedWinners]);
+
   // Watch for new winners and show slot machine
   useEffect(() => {
     const currentWinners = { ...winners };
@@ -59,6 +65,7 @@ export default function WinnersPage() {
       });
 
       setDisplayedWinners(initialKeys);
+      displayedWinnersRef.current = initialKeys;
       previousWinnersRef.current = currentWinners;
       setIsInitialLoad(false);
       return;
@@ -66,12 +73,12 @@ export default function WinnersPage() {
 
     // Find newly drawn winners (only after initial load)
     if (!isInitialLoad) {
-      const newWinners = [];
+      const newWinners: Array<{ prizeId: string; winnerId: string; winnerName: string; prizeName: string; winnerProfilePicture?: string }> = [];
       for (const [prizeId, winnerIds] of Object.entries(currentWinners)) {
         const previousIds = previousWinners[prizeId] || [];
         winnerIds.forEach((winnerId) => {
           const key = formatWinnerKey(prizeId, winnerId);
-          const isNewWinner = !previousIds.includes(winnerId) || !displayedWinners.has(key);
+          const isNewWinner = !previousIds.includes(winnerId) || !displayedWinnersRef.current.has(key);
           if (isNewWinner) {
             const prize = prizesMap.get(prizeId);
             const winner = allUsers[winnerId];
@@ -96,7 +103,7 @@ export default function WinnersPage() {
     }
 
     previousWinnersRef.current = currentWinners;
-  }, [winners, prizes, allUsers, displayedWinners, isInitialLoad]);
+  }, [winners, prizes, allUsers, isInitialLoad]);
 
   // Process winner queue - show slot machines sequentially
   useEffect(() => {
@@ -229,7 +236,7 @@ export default function WinnersPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
         {allWinners.map(({ prize, winner, winnerId }) => (
-          <Card key={prize!.id} className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 border-accent/20">
+          <Card key={`${prize!.id}-${winnerId}`} className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 border-accent/20">
             <CardHeader className="p-0 relative">
               <Image
                 src={prize!.imageUrl || 'https://placehold.co/300x200.png'}
