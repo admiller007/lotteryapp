@@ -2,7 +2,7 @@
 import { useAppContext } from '@/context/AppContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Gift } from 'lucide-react';
+import { Trophy, Gift, Sparkles, Crown, PartyPopper, Star, Ticket } from 'lucide-react';
 import Image from 'next/image';
 import { useState, useEffect, useRef } from 'react';
 import SlotMachine from '@/components/SlotMachine';
@@ -17,6 +17,19 @@ type WinnerInfo = {
 };
 
 const formatWinnerKey = (prizeId: string, winnerId: string) => `${prizeId}:${winnerId}`;
+
+function BackgroundSparkles() {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <Sparkles className="absolute top-12 left-8 h-6 w-6 text-yellow-400/40 animate-sparkle" style={{ animationDelay: '0s' }} />
+      <Star className="absolute top-32 right-12 h-5 w-5 text-amber-400/40 animate-sparkle" style={{ animationDelay: '0.6s' }} />
+      <Sparkles className="absolute top-1/2 left-4 h-7 w-7 text-orange-400/30 animate-sparkle" style={{ animationDelay: '1.1s' }} />
+      <Star className="absolute bottom-32 right-8 h-6 w-6 text-yellow-400/40 animate-sparkle" style={{ animationDelay: '1.6s' }} />
+      <Sparkles className="absolute bottom-12 left-1/3 h-5 w-5 text-amber-400/40 animate-sparkle" style={{ animationDelay: '0.3s' }} />
+      <Star className="absolute top-20 right-1/3 h-4 w-4 text-orange-400/40 animate-sparkle" style={{ animationDelay: '1.3s' }} />
+    </div>
+  );
+}
 
 export default function WinnersPage() {
   const { state } = useAppContext();
@@ -127,16 +140,26 @@ export default function WinnersPage() {
   if (showSlotMachine && currentWinner) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <SlotMachine
-            winnerName={currentWinner.winnerName}
-            prizeName={currentWinner.prizeName}
-            prizeImageUrl={currentWinner.prizeImageUrl}
-            winnerProfilePicture={currentWinner.winnerProfilePicture}
-            allUsers={Object.entries(allUsers).map(([id, user]) => ({ id, name: user.name, profilePictureUrl: user.profilePictureUrl }))}
-            onComplete={handleSlotMachineComplete}
-            autoStart={true}
-          />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md bg-gradient-to-br from-amber-950/40 via-background/85 to-orange-950/40">
+          <div className="pointer-events-none absolute inset-0">
+            <Sparkles className="absolute top-16 left-12 h-10 w-10 text-yellow-400 animate-sparkle" />
+            <Star className="absolute top-24 right-16 h-8 w-8 text-amber-400 animate-sparkle" style={{ animationDelay: '0.4s' }} />
+            <Sparkles className="absolute bottom-24 left-20 h-12 w-12 text-orange-400 animate-sparkle" style={{ animationDelay: '0.8s' }} />
+            <Star className="absolute bottom-16 right-24 h-9 w-9 text-yellow-400 animate-sparkle" style={{ animationDelay: '1.2s' }} />
+            <Sparkles className="absolute top-1/3 left-1/4 h-6 w-6 text-amber-300 animate-sparkle" style={{ animationDelay: '1.6s' }} />
+            <Star className="absolute top-1/2 right-1/4 h-7 w-7 text-orange-300 animate-sparkle" style={{ animationDelay: '0.2s' }} />
+          </div>
+          <div className="relative">
+            <SlotMachine
+              winnerName={currentWinner.winnerName}
+              prizeName={currentWinner.prizeName}
+              prizeImageUrl={currentWinner.prizeImageUrl}
+              winnerProfilePicture={currentWinner.winnerProfilePicture}
+              allUsers={Object.entries(allUsers).map(([id, user]) => ({ id, name: user.name, profilePictureUrl: user.profilePictureUrl }))}
+              onComplete={handleSlotMachineComplete}
+              autoStart={true}
+            />
+          </div>
         </div>
       </div>
     );
@@ -144,146 +167,209 @@ export default function WinnersPage() {
 
   if (prizes.length === 0) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center space-y-6">
-          <div className="flex justify-center">
-            <div className="p-6 bg-primary/10 rounded-full">
-              <Gift className="h-16 w-16 text-primary" />
+      <div className="relative min-h-[calc(100vh-150px)] overflow-hidden">
+        <BackgroundSparkles />
+        <div className="container mx-auto px-4 py-16 relative">
+          <div className="text-center space-y-8 max-w-2xl mx-auto">
+            <div className="flex justify-center">
+              <div className="relative animate-float">
+                <div className="absolute inset-0 bg-gradient-to-br from-yellow-400 via-orange-400 to-pink-500 blur-2xl opacity-50 rounded-full" />
+                <div className="relative p-8 bg-gradient-to-br from-yellow-400 via-orange-400 to-pink-500 rounded-full shadow-2xl">
+                  <Gift className="h-20 w-20 text-white" />
+                </div>
+              </div>
             </div>
-          </div>
-          <div>
-            <h1 className="text-4xl font-bold font-headline mb-4">Ready for Drawing</h1>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              No prizes have been configured yet. Winners will be announced here as they are drawn.
-            </p>
+            <div>
+              <h1 className="text-5xl md:text-6xl font-extrabold font-headline mb-4 bg-gradient-to-r from-yellow-500 via-orange-500 to-pink-500 bg-clip-text text-transparent" style={{ backgroundSize: '200% 200%' }}>
+                Ready for the Drawing
+              </h1>
+              <p className="text-xl text-muted-foreground">
+                The stage is set! Winners will be announced here as their names are drawn.
+              </p>
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
+  const lastWinnerFacility = lastWinner ? allUsers[lastWinner.winnerId]?.facilityName : undefined;
+
   const heading = lastWinner
-    ? "🎉 Congratulations to Our Winners! 🎉"
-    : "🎯 Lottery Drawing";
+    ? "🎉 We Have a Winner! 🎉"
+    : "🎰 The Lottery is On 🎰";
 
   const subheading = lastWinner && nextPrize
-    ? "The drawing is underway. Here's the most recent winner and what's coming up next."
+    ? "Congratulations! Up next, the next prize on the line."
     : lastWinner
-    ? "🎊 All prizes have been drawn! Thank you to everyone who participated."
+    ? "🎊 That's a wrap — every prize has been claimed!"
     : isAuctionOpen
-    ? "The lottery is ready! Here's the next prize up for grabs."
-    : "Winners will be announced here as they are drawn.";
+    ? "Place your bets — the next drawing is moments away."
+    : "Winners will appear here as the drawing goes on.";
 
   const showTwoCards = lastWinner && nextPrize;
-  const layoutClass = showTwoCards
-    ? "grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto"
-    : "max-w-md mx-auto";
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="text-center mb-12">
-        <div className="flex justify-center mb-6">
-          <div className={`p-6 rounded-full ${lastWinner ? "bg-accent/20" : "bg-primary/10"}`}>
-            {lastWinner
-              ? <Trophy className="h-16 w-16 text-accent" />
-              : <Gift className="h-16 w-16 text-primary" />}
+    <div className="relative min-h-[calc(100vh-150px)] overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-yellow-50/50 via-background to-orange-50/30 dark:from-amber-950/20 dark:via-background dark:to-orange-950/20" />
+      <BackgroundSparkles />
+
+      <div className="container mx-auto px-4 py-12 relative">
+        <div className="text-center mb-12 space-y-4">
+          <div className="flex justify-center mb-4">
+            <div className="relative">
+              <div className={`absolute inset-0 blur-2xl opacity-60 rounded-full ${lastWinner ? 'bg-gradient-to-br from-yellow-400 via-orange-400 to-pink-500' : 'bg-gradient-to-br from-primary via-orange-400 to-yellow-400'}`} />
+              <div className={`relative p-5 rounded-full shadow-2xl ${lastWinner ? 'bg-gradient-to-br from-yellow-400 via-orange-400 to-pink-500 animate-pulse-glow' : 'bg-gradient-to-br from-primary via-orange-400 to-yellow-400 animate-float'}`}>
+                {lastWinner
+                  ? <Trophy className="h-12 w-12 text-white drop-shadow-lg" />
+                  : <PartyPopper className="h-12 w-12 text-white drop-shadow-lg" />}
+              </div>
+            </div>
           </div>
+          <h1 className="text-4xl md:text-6xl font-extrabold font-headline bg-gradient-to-r from-yellow-500 via-orange-500 to-pink-500 bg-clip-text text-transparent leading-tight pb-2" style={{ backgroundSize: '200% 200%' }}>
+            {heading}
+          </h1>
+          <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto">
+            {subheading}
+          </p>
         </div>
-        <h1 className="text-4xl font-bold font-headline mb-4">{heading}</h1>
-        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">{subheading}</p>
-      </div>
 
-      <div className={layoutClass}>
-        {lastWinner && (
-          <Card className="overflow-hidden shadow-lg border-accent/30">
-            <CardHeader className="bg-accent/10">
-              <CardTitle className="flex items-center gap-2 text-accent">
-                <Trophy className="h-5 w-5" />
-                Last Prize Won
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 space-y-4">
-              <div className="flex justify-center">
-                <div className="relative">
-                  <Image
-                    src={lastWinner.winnerProfilePicture || 'https://placehold.co/120x120.png'}
-                    alt={lastWinner.winnerName}
-                    width={120}
-                    height={120}
-                    className="rounded-full border-4 border-accent shadow-lg object-cover h-[120px] w-[120px]"
-                    unoptimized
-                  />
-                  <div className="absolute -top-2 -right-2 bg-accent text-accent-foreground p-2 rounded-full shadow-md">
-                    <Trophy className="h-4 w-4" />
+        <div className={showTwoCards
+          ? "grid grid-cols-1 md:grid-cols-2 gap-8 max-w-6xl mx-auto"
+          : "max-w-md mx-auto"
+        }>
+          {lastWinner && (
+            <div className="relative group">
+              <div className="absolute -inset-1 rounded-2xl bg-gradient-to-br from-yellow-400 via-orange-400 to-amber-500 opacity-75 blur-md group-hover:opacity-100 transition-opacity" style={{ backgroundSize: '200% 200%' }} />
+              <Card className="relative overflow-hidden border-0 shadow-2xl animate-pulse-glow bg-gradient-to-br from-card via-card to-yellow-50/50 dark:to-amber-950/30">
+                <div className="absolute -top-8 -right-8 h-32 w-32 rounded-full bg-gradient-to-br from-yellow-300/40 to-orange-400/40 blur-2xl" />
+                <Sparkles className="absolute top-3 left-3 h-5 w-5 text-yellow-500 animate-sparkle" />
+                <Sparkles className="absolute top-3 right-3 h-5 w-5 text-orange-500 animate-sparkle" style={{ animationDelay: '0.7s' }} />
+                <Star className="absolute bottom-3 left-3 h-4 w-4 text-amber-500 animate-sparkle" style={{ animationDelay: '1.1s' }} />
+                <Star className="absolute bottom-3 right-3 h-4 w-4 text-yellow-500 animate-sparkle" style={{ animationDelay: '0.4s' }} />
+
+                <CardHeader className="text-center pb-2 relative">
+                  <CardTitle className="flex items-center justify-center gap-2 text-sm uppercase tracking-[0.25em] font-bold bg-gradient-to-r from-yellow-600 via-orange-500 to-amber-600 bg-clip-text text-transparent">
+                    <Trophy className="h-4 w-4 text-orange-500" />
+                    Latest Winner
+                    <Trophy className="h-4 w-4 text-orange-500" />
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent className="px-6 pb-6 space-y-5 text-center relative">
+                  <div className="flex justify-center">
+                    <div className="relative">
+                      <div className="absolute inset-0 rounded-full bg-gradient-to-br from-yellow-300 to-orange-400 blur-xl opacity-80 animate-pulse-glow" />
+                      <div className="absolute inset-0 rounded-full bg-gradient-to-br from-yellow-400 via-orange-400 to-amber-500 p-1.5" style={{ backgroundSize: '200% 200%' }}>
+                        <div className="h-full w-full rounded-full bg-card" />
+                      </div>
+                      <Image
+                        src={lastWinner.winnerProfilePicture || 'https://placehold.co/160x160.png'}
+                        alt={lastWinner.winnerName}
+                        width={160}
+                        height={160}
+                        className="relative rounded-full h-40 w-40 object-cover m-1.5"
+                        unoptimized
+                      />
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                        <div className="bg-gradient-to-br from-yellow-400 to-orange-500 p-2 rounded-full shadow-lg animate-bounce-subtle">
+                          <Crown className="h-6 w-6 text-white drop-shadow" />
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-              <div className="text-center">
-                <p className="text-2xl font-bold">{lastWinner.winnerName}</p>
-                {allUsers[lastWinner.winnerId]?.facilityName && (
-                  <p className="text-sm text-muted-foreground">
-                    {allUsers[lastWinner.winnerId].facilityName}
-                  </p>
-                )}
-              </div>
-              <div className="border-t pt-4">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground text-center mb-2">
-                  Won
-                </p>
-                <div className="flex items-center gap-3">
-                  <Image
-                    src={lastWinner.prizeImageUrl || 'https://placehold.co/80x80.png'}
-                    alt={lastWinner.prizeName}
-                    width={80}
-                    height={80}
-                    className="rounded-md object-contain h-20 w-20 bg-muted"
-                    unoptimized
-                  />
-                  <p className="font-semibold text-lg flex-1">{lastWinner.prizeName}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
-        {nextPrize && (
-          <Card className="overflow-hidden shadow-lg border-primary/30">
-            <CardHeader className="bg-primary/10">
-              <CardTitle className="flex items-center gap-2 text-primary">
-                <Gift className="h-5 w-5" />
-                Up Next
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 space-y-4">
-              <div className="flex justify-center">
-                <Image
-                  src={nextPrize.imageUrl || 'https://placehold.co/300x200.png'}
-                  alt={nextPrize.name}
-                  width={300}
-                  height={200}
-                  className="rounded-lg shadow-md object-contain max-h-48"
-                  unoptimized
-                />
-              </div>
-              <div className="text-center space-y-2">
-                <p className="text-2xl font-bold font-headline">{nextPrize.name}</p>
-                {nextPrize.description && (
-                  <p className="text-sm text-muted-foreground">{nextPrize.description}</p>
-                )}
-                <Badge variant="secondary" className="mt-2">
-                  {nextPrize.totalTicketsInPrize} tickets entered
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
+                  <div className="space-y-1">
+                    <h2 className="text-3xl md:text-4xl font-extrabold font-headline bg-gradient-to-r from-yellow-600 via-orange-500 to-amber-600 bg-clip-text text-transparent leading-tight pb-1">
+                      {lastWinner.winnerName}
+                    </h2>
+                    {lastWinnerFacility && (
+                      <p className="text-sm text-muted-foreground">{lastWinnerFacility}</p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-center gap-2 text-xs uppercase tracking-[0.3em] font-semibold text-orange-600/80">
+                    <span className="h-px w-8 bg-orange-400/40" />
+                    Won
+                    <span className="h-px w-8 bg-orange-400/40" />
+                  </div>
+
+                  <div className="flex items-center gap-4 p-4 rounded-xl bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border border-orange-200/50 dark:border-orange-900/40">
+                    <Image
+                      src={lastWinner.prizeImageUrl || 'https://placehold.co/80x80.png'}
+                      alt={lastWinner.prizeName}
+                      width={80}
+                      height={80}
+                      className="rounded-lg object-contain h-20 w-20 bg-white dark:bg-card shadow-sm shrink-0"
+                      unoptimized
+                    />
+                    <p className="font-bold text-lg text-left flex-1 leading-tight">{lastWinner.prizeName}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {nextPrize && (
+            <div className="relative group">
+              <div className="absolute -inset-1 rounded-2xl bg-gradient-to-br from-primary via-pink-400 to-orange-400 opacity-50 blur-md group-hover:opacity-75 transition-opacity" style={{ backgroundSize: '200% 200%' }} />
+              <Card className="relative overflow-hidden border-0 shadow-xl animate-float bg-gradient-to-br from-card via-card to-primary/5">
+                <div className="absolute -bottom-12 -left-12 h-40 w-40 rounded-full bg-gradient-to-tr from-primary/30 to-pink-300/30 blur-2xl" />
+                <Sparkles className="absolute top-3 right-3 h-5 w-5 text-primary/70 animate-sparkle" />
+                <Star className="absolute bottom-3 left-3 h-4 w-4 text-pink-400/70 animate-sparkle" style={{ animationDelay: '0.9s' }} />
+
+                <CardHeader className="text-center pb-2 relative">
+                  <CardTitle className="flex items-center justify-center gap-2 text-sm uppercase tracking-[0.25em] font-bold bg-gradient-to-r from-primary via-pink-500 to-orange-500 bg-clip-text text-transparent">
+                    <Gift className="h-4 w-4 text-primary" />
+                    Up Next
+                    <Gift className="h-4 w-4 text-primary" />
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent className="px-6 pb-6 space-y-4 text-center relative">
+                  <div className="flex justify-center">
+                    <div className="relative p-2 rounded-2xl bg-gradient-to-br from-primary/20 via-pink-200/40 to-orange-200/40 dark:from-primary/30 dark:via-pink-900/40 dark:to-orange-900/40">
+                      <Image
+                        src={nextPrize.imageUrl || 'https://placehold.co/300x200.png'}
+                        alt={nextPrize.name}
+                        width={300}
+                        height={200}
+                        className="rounded-xl shadow-lg object-contain max-h-52 bg-white dark:bg-card"
+                        unoptimized
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-2xl md:text-3xl font-extrabold font-headline bg-gradient-to-r from-primary via-pink-500 to-orange-500 bg-clip-text text-transparent leading-tight pb-1">
+                      {nextPrize.name}
+                    </h3>
+                    {nextPrize.description && (
+                      <p className="text-sm text-muted-foreground line-clamp-2">{nextPrize.description}</p>
+                    )}
+                  </div>
+                  <div className="flex justify-center">
+                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-primary/15 via-pink-200/30 to-orange-200/30 border border-primary/20 text-sm font-semibold">
+                      <Ticket className="h-4 w-4 text-primary" />
+                      <span>{nextPrize.totalTicketsInPrize} tickets in the pot</span>
+                    </div>
+                  </div>
+                  {isAuctionOpen && (
+                    <p className="text-xs uppercase tracking-[0.3em] font-bold text-primary animate-pulse">
+                      Drawing soon
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </div>
+
+        {!lastWinner && !nextPrize && (
+          <div className="text-center text-muted-foreground mt-8">
+            <p>No winners yet and no prizes remaining.</p>
+          </div>
         )}
       </div>
-
-      {!lastWinner && !nextPrize && allWinners.length === 0 && (
-        <div className="text-center text-muted-foreground mt-8">
-          <p>No winners yet and no prizes remaining.</p>
-        </div>
-      )}
     </div>
   );
 }
