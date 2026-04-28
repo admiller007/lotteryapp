@@ -186,19 +186,21 @@ Spinner.displayName = "Spinner";
 interface SlotMachineProps {
   winnerName?: string;
   prizeName?: string;
+  prizeImageUrl?: string;
   winnerProfilePicture?: string;
   allUsers?: Array<{id: string, name: string, profilePictureUrl?: string}>;
   onComplete?: () => void;
   autoStart?: boolean;
 }
 
-export default function SlotMachine({ 
-  winnerName, 
-  prizeName, 
+export default function SlotMachine({
+  winnerName,
+  prizeName,
+  prizeImageUrl,
   winnerProfilePicture,
   allUsers = [],
   onComplete,
-  autoStart = false 
+  autoStart = false
 }: SlotMachineProps) {
   const [winner, setWinner] = useState<boolean | null>(null);
   const [matches, setMatches] = useState<number[]>([]);
@@ -216,7 +218,7 @@ export default function SlotMachine({
         setShowResult(true);
         setIsSpinning(false);
         if (onComplete) {
-          setTimeout(onComplete, 2000);
+          setTimeout(onComplete, 5500);
         }
       }
       return newMatches;
@@ -259,7 +261,28 @@ export default function SlotMachine({
       </CardHeader>
       <CardContent className="space-y-6">
         {winner && <WinningSound />}
-        
+
+        {prizeName && (
+          <div className="text-center space-y-2">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+              Drawing for
+            </p>
+            {prizeImageUrl && (
+              <div className="flex justify-center">
+                <Image
+                  src={prizeImageUrl}
+                  alt={prizeName}
+                  width={200}
+                  height={140}
+                  className="rounded-lg shadow-md object-contain max-h-36"
+                  unoptimized
+                />
+              </div>
+            )}
+            <h3 className="text-2xl font-bold font-headline text-accent">{prizeName}</h3>
+          </div>
+        )}
+
         <div className="text-center space-y-4">
           {/* Winner Profile Picture */}
           {winner && winnerProfilePicture && (
