@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { RotateCcw, Trophy } from 'lucide-react';
+import { RotateCcw, Trophy, Sparkles, Crown, Star } from 'lucide-react';
 import Image from 'next/image';
 import styles from './SlotMachine.module.css';
 
@@ -186,19 +186,21 @@ Spinner.displayName = "Spinner";
 interface SlotMachineProps {
   winnerName?: string;
   prizeName?: string;
+  prizeImageUrl?: string;
   winnerProfilePicture?: string;
   allUsers?: Array<{id: string, name: string, profilePictureUrl?: string}>;
   onComplete?: () => void;
   autoStart?: boolean;
 }
 
-export default function SlotMachine({ 
-  winnerName, 
-  prizeName, 
+export default function SlotMachine({
+  winnerName,
+  prizeName,
+  prizeImageUrl,
   winnerProfilePicture,
   allUsers = [],
   onComplete,
-  autoStart = false 
+  autoStart = false
 }: SlotMachineProps) {
   const [winner, setWinner] = useState<boolean | null>(null);
   const [matches, setMatches] = useState<number[]>([]);
@@ -216,7 +218,7 @@ export default function SlotMachine({
         setShowResult(true);
         setIsSpinning(false);
         if (onComplete) {
-          setTimeout(onComplete, 2000);
+          setTimeout(onComplete, 5500);
         }
       }
       return newMatches;
@@ -250,37 +252,77 @@ export default function SlotMachine({
   }, [autoStart, showResult, isSpinning]);
 
   return (
-    <Card className="w-full max-w-lg mx-auto">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-center">
-          <Trophy className="h-5 w-5" />
-          Winner Announcement
-        </CardTitle>
-      </CardHeader>
+    <div className="relative w-full max-w-lg mx-auto">
+      <div className="absolute -inset-1 rounded-2xl bg-gradient-to-br from-yellow-400 via-orange-400 to-amber-500 opacity-80 blur-md animate-pulse-glow" style={{ backgroundSize: '200% 200%' }} />
+      <Card className="relative w-full overflow-hidden border-0 shadow-2xl bg-gradient-to-br from-card via-card to-yellow-50/40 dark:to-amber-950/30">
+        <Sparkles className="absolute top-3 left-3 h-5 w-5 text-yellow-500 animate-sparkle" />
+        <Sparkles className="absolute top-3 right-3 h-5 w-5 text-orange-500 animate-sparkle" style={{ animationDelay: '0.7s' }} />
+        <Star className="absolute bottom-3 left-3 h-4 w-4 text-amber-500 animate-sparkle" style={{ animationDelay: '1.1s' }} />
+        <Star className="absolute bottom-3 right-3 h-4 w-4 text-yellow-500 animate-sparkle" style={{ animationDelay: '0.4s' }} />
+
+        <CardHeader className="text-center pb-2">
+          <CardTitle className="flex items-center justify-center gap-2 text-sm uppercase tracking-[0.25em] font-bold bg-gradient-to-r from-yellow-600 via-orange-500 to-amber-600 bg-clip-text text-transparent">
+            <Trophy className="h-4 w-4 text-orange-500" />
+            Winner Announcement
+            <Trophy className="h-4 w-4 text-orange-500" />
+          </CardTitle>
+        </CardHeader>
       <CardContent className="space-y-6">
         {winner && <WinningSound />}
-        
+
+        {prizeName && (
+          <div className="text-center space-y-2 p-4 rounded-xl bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border border-orange-200/50 dark:border-orange-900/40">
+            <p className="text-xs uppercase tracking-[0.3em] font-bold text-orange-600/80">
+              Drawing for
+            </p>
+            {prizeImageUrl && (
+              <div className="flex justify-center">
+                <Image
+                  src={prizeImageUrl}
+                  alt={prizeName}
+                  width={200}
+                  height={140}
+                  className="rounded-lg shadow-md object-contain max-h-36 bg-white dark:bg-card"
+                  unoptimized
+                />
+              </div>
+            )}
+            <h3 className="text-2xl font-extrabold font-headline bg-gradient-to-r from-yellow-600 via-orange-500 to-amber-600 bg-clip-text text-transparent leading-tight pb-1">
+              {prizeName}
+            </h3>
+          </div>
+        )}
+
         <div className="text-center space-y-4">
-          {/* Winner Profile Picture */}
           {winner && winnerProfilePicture && (
             <div className="flex justify-center">
               <div className="relative">
+                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-yellow-300 to-orange-400 blur-xl opacity-80 animate-pulse-glow" />
+                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-yellow-400 via-orange-400 to-amber-500 p-1.5">
+                  <div className="h-full w-full rounded-full bg-card" />
+                </div>
                 <Image
                   src={winnerProfilePicture}
                   alt={winnerName || "Winner"}
                   width={120}
                   height={120}
-                  className="rounded-full border-4 border-accent shadow-lg"
+                  className="relative rounded-full h-[120px] w-[120px] object-cover m-1.5"
                   unoptimized
                 />
-                <div className="absolute -top-2 -right-2 bg-accent text-accent-foreground p-2 rounded-full">
-                  <Trophy className="h-4 w-4" />
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                  <div className="bg-gradient-to-br from-yellow-400 to-orange-500 p-2 rounded-full shadow-lg animate-bounce-subtle">
+                    <Crown className="h-5 w-5 text-white drop-shadow" />
+                  </div>
                 </div>
               </div>
             </div>
           )}
-          
-          <div className="text-lg font-semibold p-4 rounded-lg bg-muted">
+
+          <div className={`text-lg font-bold p-4 rounded-xl ${
+            winner
+              ? 'bg-gradient-to-r from-yellow-100 via-orange-100 to-amber-100 dark:from-amber-950/50 dark:via-orange-950/50 dark:to-yellow-950/50 text-orange-700 dark:text-orange-300 border border-orange-300/60 dark:border-orange-800/60'
+              : 'bg-muted'
+          }`}>
             {winner === null
               ? isSpinning ? "Drawing winner..." : "Ready to draw..."
               : winner
@@ -338,5 +380,6 @@ export default function SlotMachine({
         )}
       </CardContent>
     </Card>
+    </div>
   );
 }
