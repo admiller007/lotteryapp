@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Trophy, Shuffle, Target, Users, Gift, Zap, UserCheck } from 'lucide-react';
-import { useAppContext } from '@/context/AppContext';
+import { useAppContext, buildDrawingPool } from '@/context/AppContext';
 import { toast } from '@/hooks/use-toast';
 import SlotMachine from '@/components/SlotMachine';
 import type { Prize } from '@/lib/types';
@@ -167,22 +167,40 @@ export default function WinnerDrawing() {
     setSelectedPrize('');
   };
 
-  const handleRedrawPrizeWinner = (prizeId: string) => {
-    dispatch({
-      type: 'REDRAW_PRIZE_WINNER',
-      payload: { prizeId }
-    });
+  const handleRedrawPrizeWinner = (prizeId: string, winnerId: string) => {
+    if (pendingConflict || drawsPaused) {
+      toast({
+        title: "Resolve Winner Choice",
+        description: "Finish the pending winner conflict before redrawing.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     const prize: Prize | undefined = prizes.find((p) => p.id === prizeId);
-    const prizeWinners = getPrizeWinners(prizeId);
-    const winnerId = prizeWinners[prizeWinners.length - 1];
-    const winner = winnerId ? state.allUsers[winnerId] : null;
-    
-    if (winner && prize) {
+    if (!prize) return;
+
+    const replacedName = state.allUsers[winnerId]?.name || 'this winner';
+    if (!window.confirm(`Redraw ${prize.name}?\n\n${replacedName} will lose this prize and a new winner will be drawn.`)) {
+      return;
+    }
+
+    // Same eligibility rule the reducer uses: nobody who holds a prize, and
+    // not the person being replaced.
+    const excluded = new Set<string>([...Object.values(winners).flat(), winnerId]);
+    const hasEligible = buildDrawingPool(prize, excluded, state.allUsers).length > 0;
+
+    dispatch({
+      type: 'REDRAW_PRIZE_WINNER',
+      payload: { prizeId, winnerId }
+    });
+
+    if (hasEligible) {
+      // "Drawing..." lets the effect below fill in the newly drawn winner.
       setCurrentDrawnWinner({
-        winnerName: winner.name,
+        winnerName: 'Drawing...',
         prizeName: prize.name,
-        winnerProfilePicture: winner.profilePictureUrl
+        winnerProfilePicture: undefined
       });
       setShowSlotMachine(true);
     }
@@ -690,36 +708,37 @@ export default function WinnerDrawing() {
               <div className="grid gap-3">
                 {prizesWithWinners.map((prize) => {
                   const prizeWinnerIds = getPrizeWinners(prize.id);
-                  const winnerNames = prizeWinnerIds
-                    .map(id => state.allUsers[id]?.name || 'Unknown')
-                    .join(', ');
                   const tier = prizeTiers.find(t => t.id === prize.tierId);
                   
                   return (
-                    <div key={prize.id} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div key={prize.id} className="p-3 border rounded-lg space-y-2">
                       <div className="flex items-center gap-2">
                         {tier && (
-                          <div 
+                          <div
                             className="w-3 h-3 rounded-full"
                             style={{ backgroundColor: tier.color }}
                           />
                         )}
-                        <div>
-                          <p className="font-medium">{prize.name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            Winner: {winnerNames || 'Pending'}
-                          </p>
-                        </div>
+                        <p className="font-medium">{prize.name}</p>
+                        <span className="text-xs text-muted-foreground">
+                          {prizeWinnerIds.length}/{prize.numberOfWinners || 1} winners
+                        </span>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleRedrawPrizeWinner(prize.id)}
-                        disabled={isAuctionOpen}
-                      >
-                        <Shuffle className="h-3 w-3 mr-1" />
-                        Redraw
-                      </Button>
+                      {prizeWinnerIds.map((winnerId) => (
+                        <div key={winnerId} className="flex items-center justify-between gap-2 pl-5">
+                          <span className="text-sm">{state.allUsers[winnerId]?.name || 'Unknown'}</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleRedrawPrizeWinner(prize.id, winnerId)}
+                            disabled={drawsPaused}
+                            title="Replace this winner with a new random draw"
+                          >
+                            <Shuffle className="h-3 w-3 mr-1" />
+                            Redraw
+                          </Button>
+                        </div>
+                      ))}
                     </div>
                   );
                 })}

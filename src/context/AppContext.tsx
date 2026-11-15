@@ -523,6 +523,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
           await resetAuctionData();
         } catch (error) {
           console.error('Failed to reset auction data in Firebase:', error);
+          toast({ title: "Reset failed", description: "Couldn't clear lottery data in Firebase. Please try again.", variant: "destructive" });
         }
       });
       
@@ -535,14 +536,17 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         ...initialState, 
         winners: {}, // Explicitly clear winners
         currentUser: resetCurrentUser, 
-        allUsers: resetCurrentUser ? { [resetCurrentUser.id]: { id: resetCurrentUser.id, name: resetCurrentUser.name } } : {}, 
+        allUsers: state.allUsers, // keep names; reset only clears tickets and winners
         prizes: state.prizes.map(p => ({ ...p, entries: [], totalTicketsInPrize: 0 })), 
         prizeTiers: state.prizeTiers,
       };
     }
     case 'REDRAW_PRIZE_WINNER': {
-      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId) || state.isAuctionOpen) {
-        toast({ title: "Action Denied", description: "Admin login required or auction must be closed.", variant: "destructive" });
+      // Replaces ONE winner of a prize (e.g. they're not present). Allowed at
+      // any time: admins usually draw prize-by-prize, so the auction is still
+      // "open" when a redraw is needed.
+      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) {
+        toast({ title: "Action Denied", description: "Admin login required.", variant: "destructive" });
         return state;
       }
 
@@ -558,44 +562,46 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         return state;
       }
 
-      if (prize.entries.length === 0 || prize.entries.every(e => e.numTickets === 0)) {
-        toast({ title: "No Entries", description: `No tickets entered for ${prize.name} to draw from.`, variant: "destructive" });
+      const currentPrizeWinners = state.winners[prizeId] || [];
+      const replacedId = action.payload.winnerId ?? currentPrizeWinners[currentPrizeWinners.length - 1];
+      if (!replacedId || !currentPrizeWinners.includes(replacedId)) {
+        toast({ title: "Nothing to Redraw", description: `${prize.name} has no winner to replace.`, variant: "destructive" });
         return state;
       }
 
-      const desiredWinners = prize.numberOfWinners || 1;
-      const otherPrizeWinners = new Set<string>(
-        Object.entries(state.winners)
-          .filter(([pId]) => pId !== prizeId)
-          .flatMap(([, ids]) => ids)
-      );
+      // The replaced winner can't be picked again, and (as with every draw)
+      // nobody who currently holds a prize can win this one.
+      const excluded = new Set<string>([...Object.values(state.winners).flat(), replacedId]);
+      const { winnerId: newWinnerId } = pickWinnerWithConflictCheck(prize, state.winners, excluded, state.allUsers);
 
-      const refreshedPrizeWinners: string[] = [];
-      for (let i = 0; i < desiredWinners; i++) {
-        const excluded = new Set<string>([...otherPrizeWinners, ...refreshedPrizeWinners]);
-        const { winnerId } = pickWinnerWithConflictCheck(prize, { ...state.winners, [prizeId]: refreshedPrizeWinners }, excluded, state.allUsers);
-        if (!winnerId) break;
-        refreshedPrizeWinners.push(winnerId);
+      const keptWinners = currentPrizeWinners.filter(id => id !== replacedId);
+      const updatedWinners = { ...state.winners };
+      if (newWinnerId) {
+        // New winner goes last so the slot machine (which shows the latest
+        // winner of a prize) announces them.
+        updatedWinners[prizeId] = [...keptWinners, newWinnerId];
+      } else if (keptWinners.length > 0) {
+        updatedWinners[prizeId] = keptWinners;
+      } else {
+        delete updatedWinners[prizeId];
       }
 
-      const updatedWinners = { ...state.winners, [prizeId]: refreshedPrizeWinners };
-
-      if (refreshedPrizeWinners.length === 0) {
-        toast({ title: "Re-draw Result", description: `No eligible alternative winner could be found for ${prize.name}. The prize is now unwon.` });
-        return { ...state, winners: updatedWinners };
+      const replacedName = state.allUsers[replacedId]?.name || 'Previous winner';
+      if (newWinnerId) {
+        const newName = state.allUsers[newWinnerId]?.name || 'Unknown User';
+        toast({ title: "Winner Re-drawn!", description: `${newName} wins ${prize.name} (replacing ${replacedName}).` });
+      } else {
+        toast({ title: "No Other Eligible Entrants", description: `${replacedName} was removed from ${prize.name}, but no one else is eligible to win it.` });
       }
 
-      const newWinnerNames = refreshedPrizeWinners
-        .map(id => state.allUsers[id]?.name || 'Unknown User')
-        .join(', ');
-      toast({ title: "Winner Re-drawn!", description: `${newWinnerNames} now win ${prize.name}.` });
-
-      // Save winners to Firebase
+      // Persist in both cases, otherwise the winners listener would restore
+      // the removed winner from Firebase.
       import('@/lib/firebaseService').then(async ({ saveWinners }) => {
         try {
           await saveWinners(updatedWinners);
         } catch (error) {
           console.error('Failed to save redrawn winners to Firebase:', error);
+          toast({ title: "Redraw not saved", description: "Couldn't save the redraw. Please try again.", variant: "destructive" });
         }
       });
 
