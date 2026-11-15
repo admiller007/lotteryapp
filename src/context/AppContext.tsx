@@ -3,6 +3,7 @@
 import type { Dispatch, ReactNode } from 'react';
 import React, { createContext, useContext, useReducer, useMemo, useEffect, useRef } from 'react';
 import type { Prize, AppUser, AuctionContextState, AuctionAction, PrizeTier } from '@/lib/types';
+import type { FirebasePrize } from '@/lib/firebaseService';
 import { toast } from '@/hooks/use-toast';
 import { PARTY_CHECKIN_FLAG_KEY } from '@/lib/partyCheckIn';
 
@@ -241,9 +242,11 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
 
 
       // Save to Firebase
-      import('@/lib/firebaseService').then(async ({ allocateTickets, updatePrizeEntries }) => {
+      // allocateTickets updates the prize's entries in a Firestore transaction.
+      // Don't also write this client's copy of prize.entries: it can be stale
+      // and would wipe out other users' allocations to the same prize.
+      import('@/lib/firebaseService').then(async ({ allocateTickets }) => {
         try {
-          // Save the allocation to Firebase
           await allocateTickets({
             lotteryId: 'default', // Using default lottery ID
             prizeId,
@@ -252,11 +255,13 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
             tickets: count,
             timestamp: new Date().toISOString()
           });
-          
-          // Update the prize entries in Firebase
-          await updatePrizeEntries(prizeId, updatedEntries);
         } catch (error) {
           console.error('Failed to save allocation to Firebase:', error);
+          toast({
+            title: "Tickets not saved",
+            description: "We couldn't save that allocation. Please try again.",
+            variant: "destructive",
+          });
         }
       });
 
@@ -1063,6 +1068,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   React.useEffect(() => {
     let winnersUnsubscribe: (() => void) | null = null;
+    let prizesUnsubscribe: (() => void) | null = null;
 
     const setupFirebaseData = async () => {
       try {
@@ -1074,7 +1080,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           convertFirebasePrizeToAppPrize,
           convertFirebasePrizeTierToAppTier,
         } = await import('@/lib/firebaseService');
-        const { collection, onSnapshot } = await import('firebase/firestore');
+        const { collection, onSnapshot, query, orderBy } = await import('firebase/firestore');
         const { db } = await import('@/lib/firebase');
         
         // Load Firebase data
@@ -1136,6 +1142,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           dispatch({ type: 'UPSERT_ALL_USERS', payload: usersMap });
         }
         
+        // Keep prizes (and their ticket entries) live. Without this, each
+        // browser keeps the entries it loaded at page load, so the admin would
+        // draw winners from stale entries. Same ordering as getPrizes().
+        prizesUnsubscribe = onSnapshot(
+          query(collection(db, 'prizes'), orderBy('createdAt', 'desc')),
+          (snapshot) => {
+            if (snapshot.empty) return;
+            const livePrizes = snapshot.docs.map((d) =>
+              convertFirebasePrizeToAppPrize({ id: d.id, ...d.data() } as FirebasePrize)
+            );
+            dispatch({ type: 'SET_FIREBASE_PRIZES', payload: livePrizes });
+          },
+          (error) => console.error('Prizes listener error:', error)
+        );
+
         // Now set up winners listener
         winnersUnsubscribe = onSnapshot(collection(db, 'winners'), (snapshot) => {
           const winnersData: Record<string, string[]> = {};
@@ -1204,6 +1225,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       if (winnersUnsubscribe) {
         winnersUnsubscribe();
+      }
+      if (prizesUnsubscribe) {
+        prizesUnsubscribe();
       }
     };
   }, []); // Empty dependency array to run once on mount

@@ -1,7 +1,8 @@
-import { Firestore } from 'firebase/firestore';
-import { Auth } from 'firebase/auth';
-import { FirebaseStorage } from 'firebase/storage';
-import { FirebaseApp } from 'firebase/app';
+import type { Firestore } from 'firebase/firestore';
+import type { Auth } from 'firebase/auth';
+import type { FirebaseStorage } from 'firebase/storage';
+import type { FirebaseApp } from 'firebase/app';
+import { isFirebaseConfigured, missingVars } from './config';
 import {
   getFirestoreInstance,
   getAuthInstance,
@@ -9,37 +10,36 @@ import {
   getAppInstance
 } from './initialize';
 
-// Export lazy-initialized instances using Proxy for deferred initialization
-export const db = new Proxy({} as Firestore, {
-  get(target, prop) {
-    const instance = getFirestoreInstance();
-    const value = instance[prop as keyof Firestore];
-    return typeof value === 'function' ? value.bind(instance) : value;
-  }
-});
+// Firebase SDK functions (collection, doc, writeBatch, runTransaction, ...)
+// type-check their first argument with `instanceof`, so `db` must be the real
+// SDK instance — a Proxy wrapper is rejected with "Expected first argument to
+// collection() to be ... FirebaseFirestore". When env vars are missing we
+// export a stub that throws a clear error on first use instead of crashing at
+// import time.
+function missingConfigStub<T extends object>(name: string): T {
+  return new Proxy({} as T, {
+    get() {
+      throw new Error(
+        `Firebase ${name} unavailable: missing environment variables ${missingVars.join(', ')}`
+      );
+    }
+  });
+}
 
-export const auth = new Proxy({} as Auth, {
-  get(target, prop) {
-    const instance = getAuthInstance();
-    const value = instance[prop as keyof Auth];
-    return typeof value === 'function' ? value.bind(instance) : value;
-  }
-});
+export const db: Firestore = isFirebaseConfigured
+  ? getFirestoreInstance()
+  : missingConfigStub<Firestore>('Firestore');
 
-export const storage = new Proxy({} as FirebaseStorage, {
-  get(target, prop) {
-    const instance = getStorageInstance();
-    const value = instance[prop as keyof FirebaseStorage];
-    return typeof value === 'function' ? value.bind(instance) : value;
-  }
-});
+export const auth: Auth = isFirebaseConfigured
+  ? getAuthInstance()
+  : missingConfigStub<Auth>('Auth');
 
-const app = new Proxy({} as FirebaseApp, {
-  get(target, prop) {
-    const instance = getAppInstance();
-    const value = instance[prop as keyof FirebaseApp];
-    return typeof value === 'function' ? value.bind(instance) : value;
-  }
-});
+export const storage: FirebaseStorage = isFirebaseConfigured
+  ? getStorageInstance()
+  : missingConfigStub<FirebaseStorage>('Storage');
+
+const app: FirebaseApp = isFirebaseConfigured
+  ? getAppInstance()
+  : missingConfigStub<FirebaseApp>('App');
 
 export default app;

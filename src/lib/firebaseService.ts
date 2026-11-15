@@ -10,7 +10,8 @@ import {
   orderBy,
   writeBatch,
   Timestamp,
-  getDoc
+  getDoc,
+  runTransaction
 } from 'firebase/firestore';
 import { 
   ref, 
@@ -310,43 +311,64 @@ export const getUserByCredentials = async (
 };
 
 // Ticket Allocation Management
-export const allocateTickets = async (allocation: Omit<FirebaseAllocation, 'id'>): Promise<string> => {
+export const allocateTickets = async (
+  allocation: Omit<FirebaseAllocation, 'id'>
+): Promise<{ entries: Array<{ userId: string; numTickets: number }>; totalTicketsInPrize: number }> => {
   try {
-    // Check if user already has an allocation for this prize
-    const q = query(
+    const prizeRef = doc(db, 'prizes', allocation.prizeId);
+    // One allocation doc per (lottery, prize, user) so concurrent writes for the
+    // same user/prize land on the same document instead of creating duplicates.
+    const allocationRef = doc(
+      db,
+      'allocations',
+      `${allocation.lotteryId}_${allocation.prizeId}_${allocation.userId}`
+    );
+
+    // Allocation docs written before deterministic IDs used random IDs. Find
+    // them so the transaction can remove them; otherwise getUserAllocations
+    // could read a stale legacy doc instead of the current one.
+    const legacySnapshot = await getDocs(query(
       collection(db, 'allocations'),
       where('lotteryId', '==', allocation.lotteryId),
       where('prizeId', '==', allocation.prizeId),
       where('userId', '==', allocation.userId)
-    );
-    const existingSnapshot = await getDocs(q);
-    
-    if (!existingSnapshot.empty) {
-      // Update existing allocation
-      const existingDoc = existingSnapshot.docs[0];
-      if (allocation.tickets === 0) {
-        await deleteDoc(existingDoc.ref);
-        return existingDoc.id;
-      } else {
-        await updateDoc(existingDoc.ref, {
-          tickets: allocation.tickets,
-          userName: allocation.userName,
-          timestamp: new Date().toISOString()
-        });
-        return existingDoc.id;
+    ));
+    const legacyRefs = legacySnapshot.docs
+      .filter((d) => d.id !== allocationRef.id)
+      .map((d) => d.ref);
+
+    // Read-modify-write the prize's entries inside a transaction. Firestore
+    // retries the transaction if another user changed the prize in between, so
+    // simultaneous allocations to the same prize can no longer overwrite each
+    // other's entries.
+    return await runTransaction(db, async (transaction) => {
+      const prizeSnapshot = await transaction.get(prizeRef);
+      if (!prizeSnapshot.exists()) {
+        throw new Error('Prize not found');
       }
-    } else {
-      // Create new allocation if tickets > 0
+
+      const prizeData = prizeSnapshot.data() as FirebasePrize;
+      const entriesWithoutUser = (prizeData.entries || []).filter(
+        (entry) => entry.userId !== allocation.userId
+      );
+      const entries = allocation.tickets > 0
+        ? [...entriesWithoutUser, { userId: allocation.userId, numTickets: allocation.tickets }]
+        : entriesWithoutUser;
+      const totalTicketsInPrize = entries.reduce((sum, entry) => sum + entry.numTickets, 0);
+
+      legacyRefs.forEach((ref) => transaction.delete(ref));
       if (allocation.tickets > 0) {
-        const docRef = await addDoc(collection(db, 'allocations'), {
+        transaction.set(allocationRef, {
           ...allocation,
           timestamp: new Date().toISOString()
         });
-        return docRef.id;
+      } else {
+        transaction.delete(allocationRef);
       }
-    }
-    
-    return '';
+      transaction.update(prizeRef, { entries, totalTicketsInPrize });
+
+      return { entries, totalTicketsInPrize };
+    });
   } catch (error) {
     console.error('Error allocating tickets:', error);
     throw error;
