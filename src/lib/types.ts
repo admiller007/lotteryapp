@@ -16,6 +16,7 @@ export interface Prize {
   totalTicketsInPrize: number;
   tierId?: string;
   numberOfWinners?: number;
+  excludedFacilities?: string[];
 }
 
 export interface AppUser {
