@@ -695,6 +695,10 @@ export default function AdminPage() {
 
   const handleResetAuction = () => {
     dispatch({ type: 'RESET_AUCTION' });
+    // A fresh lottery starts with ticket allocation open.
+    import('@/lib/firebaseService')
+      .then(({ setAllocationsOpen }) => setAllocationsOpen(true))
+      .catch((error) => console.error('Failed to reopen ticket allocation after reset:', error));
     toast({ title: "Auction Reset", description: "The auction has been reset to its initial state." });
   };
 

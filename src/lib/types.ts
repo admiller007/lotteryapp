@@ -45,6 +45,8 @@ export interface AuctionContextState {
   prizeTiers: PrizeTier[];
   currentUser: AppUser | null; // Can be null if no user is logged in
   isAuctionOpen: boolean;
+  // Admin switch stored in Firestore (settings/lottery); when false nobody can change tickets.
+  allocationsOpen: boolean;
   winners: Record<string, string[]>;
   allUsers: Record<string, { id: string; name: string; tickets?: number; facilityName?: string; pin?: string; profilePictureUrl?: string; status?: 'inactive' | 'working' | 'at_party' }>;
   pendingConflict: PrizeConflict | null;
@@ -68,6 +70,7 @@ export type AuctionAction =
   | { type: 'ASSIGN_SPECIFIC_WINNER'; payload: { prizeId: string; userId: string } }
   | { type: 'DRAW_TIER_WINNERS'; payload: { tierId: string } }
   | { type: 'RESET_AUCTION' }
+  | { type: 'SET_ALLOCATIONS_OPEN'; payload: { open: boolean } }
   | { type: 'REDRAW_PRIZE_WINNER'; payload: { prizeId: string } }
   | { type: 'LOGIN_USER'; payload: { firstName: string; lastName: string; facilityName: string; pin: string } }
   | { type: 'LOGIN_SUCCESS'; payload: { user: AppUser; userName: string } }

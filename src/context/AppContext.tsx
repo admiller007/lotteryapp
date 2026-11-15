@@ -72,6 +72,7 @@ const initialState: AuctionContextState = {
   prizeTiers: initialPrizeTiers,
   currentUser: null, // No user logged in initially
   isAuctionOpen: true,
+  allocationsOpen: true,
   winners: {},
   pendingConflict: null,
   drawsPaused: false,
@@ -208,6 +209,10 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
     }
     case 'ALLOCATE_TICKETS': {
       if (!state.currentUser) return state;
+      if (!state.allocationsOpen) {
+        toast({ title: "Ticket allocation is closed", description: "Tickets can't be changed right now.", variant: "destructive" });
+        return state;
+      }
       const { prizeId, userId, userName, count } = action.payload; 
       const prize = state.prizes.find(p => p.id === prizeId);
       if (!prize) return state;
@@ -257,9 +262,12 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
           });
         } catch (error) {
           console.error('Failed to save allocation to Firebase:', error);
+          const closed = (error as Error)?.name === 'AllocationsClosedError';
           toast({
-            title: "Tickets not saved",
-            description: "We couldn't save that allocation. Please try again.",
+            title: closed ? "Ticket allocation is closed" : "Tickets not saved",
+            description: closed
+              ? "Your change wasn't saved because ticket allocation has been closed."
+              : "We couldn't save that allocation. Please try again.",
             variant: "destructive",
           });
         }
@@ -600,6 +608,10 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       });
 
       return { ...state, winners: updatedWinners };
+    }
+    case 'SET_ALLOCATIONS_OPEN': {
+      if (state.allocationsOpen === action.payload.open) return state;
+      return { ...state, allocationsOpen: action.payload.open };
     }
     case 'SET_FIREBASE_PRIZES': {
       return {
@@ -1069,6 +1081,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   React.useEffect(() => {
     let winnersUnsubscribe: (() => void) | null = null;
     let prizesUnsubscribe: (() => void) | null = null;
+    let settingsUnsubscribe: (() => void) | null = null;
 
     const setupFirebaseData = async () => {
       try {
@@ -1080,8 +1093,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           convertFirebasePrizeToAppPrize,
           convertFirebasePrizeTierToAppTier,
         } = await import('@/lib/firebaseService');
-        const { collection, onSnapshot, query, orderBy } = await import('firebase/firestore');
+        const { collection, onSnapshot, query, orderBy, doc } = await import('firebase/firestore');
         const { db } = await import('@/lib/firebase');
+
+        // Admin's "close ticket allocation" switch, live for everyone.
+        settingsUnsubscribe = onSnapshot(
+          doc(db, 'settings', 'lottery'),
+          (snap) => {
+            const open = !snap.exists() || snap.data().allocationsOpen !== false;
+            dispatch({ type: 'SET_ALLOCATIONS_OPEN', payload: { open } });
+          },
+          (error) => console.error('Settings listener error:', error)
+        );
         
         // Load Firebase data
         const [firebasePrizes, firebaseUsers, firebaseTiers] = await Promise.all([
@@ -1228,6 +1251,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
       if (prizesUnsubscribe) {
         prizesUnsubscribe();
+      }
+      if (settingsUnsubscribe) {
+        settingsUnsubscribe();
       }
     };
   }, []); // Empty dependency array to run once on mount
