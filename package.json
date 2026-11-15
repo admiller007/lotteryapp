@@ -10,7 +10,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "simulate:conflict": "tsx scripts/conflict-sim.ts"
+    "simulate:conflict": "tsx scripts/conflict-sim.ts",
+    "dry-run": "tsx scripts/dry-run.ts"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.8.0",
