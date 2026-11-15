@@ -18,88 +18,7 @@
   to { opacity: 1; }
 }
 
-/* ---------- Reel ---------- */
-
-.reel {
-  position: relative;
-  width: 100%;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 18%, #000 82%, transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0%, #000 18%, #000 82%, transparent 100%);
-}
-
-.card {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  border-radius: 1.25rem;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  will-change: transform;
-}
-
-.cardWinner {
-  background: linear-gradient(180deg, rgba(247, 201, 72, 0.3), rgba(247, 201, 72, 0.1));
-  border-color: transparent;
-  box-shadow: 0 0 70px rgba(247, 201, 72, 0.5);
-  animation: winner-pulse 900ms ease-out both;
-}
-
-@keyframes winner-pulse {
-  0% { scale: 1; }
-  35% { scale: 1.12; }
-  100% { scale: 1.06; }
-}
-
-.cardName {
-  font-weight: 700;
-  line-height: 1.15;
-  text-align: center;
-  padding: 0 0.5rem;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-/* Gold frame + pointers marking where the reel stops */
-.frame {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  translate: -50% -50%;
-  border-radius: 1.5rem;
-  border: 3px solid var(--gold);
-  box-shadow: 0 0 30px rgba(247, 201, 72, 0.45), inset 0 0 30px rgba(247, 201, 72, 0.15);
-  pointer-events: none;
-}
-
-.pointerTop,
-.pointerBottom {
-  position: absolute;
-  left: 50%;
-  translate: -50% 0;
-  width: 0;
-  height: 0;
-  border-left: 14px solid transparent;
-  border-right: 14px solid transparent;
-  filter: drop-shadow(0 0 8px rgba(247, 201, 72, 0.8));
-}
-
-.pointerTop {
-  top: -18px;
-  border-top: 16px solid var(--gold);
-}
-
-.pointerBottom {
-  bottom: -18px;
-  border-bottom: 16px solid var(--gold);
-}
+/* ---------- Status text ---------- */
 
 .dots::after {
   content: '';
@@ -168,7 +87,7 @@
 }
 
 .winnerName {
-  font-size: clamp(2.25rem, 7vw, 5.5rem);
+  font-size: clamp(2.5rem, min(8.5vw, 13vh), 10rem);
   line-height: 1.02;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -195,6 +114,56 @@
   .rays { animation: fade-in 300ms ease-out both; }
   .portraitRing,
   .riseIn,
-  .cardWinner { animation-duration: 1ms; }
+  .readoutPop { animation-duration: 1ms; }
   .dots::after { animation: none; content: '...'; }
+}
+
+/* ---------- Prize wheel ---------- */
+
+.readoutPop {
+  animation: readout-pop 220ms ease-out both;
+}
+
+@keyframes readout-pop {
+  from { opacity: 0.4; translate: 0 0.15em; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+.hub {
+  background: radial-gradient(circle at 35% 30%, #fff6d0 0%, #f7c948 35%, #b7791f 75%, #7a4d00 100%);
+  box-shadow: 0 0 0 4px #5c3d00, 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 -6px 14px rgba(0, 0, 0, 0.35);
+}
+
+.bulbA,
+.bulbB {
+  fill: #fff4c2;
+  filter: drop-shadow(0 0 6px rgba(255, 230, 140, 0.95));
+}
+
+.rim[data-mode='spin'] .bulbA { animation: bulb 360ms steps(1, end) infinite; }
+.rim[data-mode='spin'] .bulbB { animation: bulb 360ms steps(1, end) infinite; animation-delay: -180ms; }
+.rim[data-mode='slow'] .bulbA { animation: bulb 900ms steps(1, end) infinite; }
+.rim[data-mode='slow'] .bulbB { animation: bulb 900ms steps(1, end) infinite; animation-delay: -450ms; }
+.rim[data-mode='win'] .bulbA,
+.rim[data-mode='win'] .bulbB { animation: bulb 240ms steps(1, end) infinite; }
+
+@keyframes bulb {
+  0% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.sliceGlow {
+  filter: drop-shadow(0 0 18px rgba(255, 224, 138, 0.95));
+  animation: slice-glow 700ms ease-in-out infinite alternate;
+}
+
+@keyframes slice-glow {
+  from { stroke-opacity: 0.55; }
+  to { stroke-opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rim[data-mode] .bulbA,
+  .rim[data-mode] .bulbB,
+  .sliceGlow { animation: none; }
 }
