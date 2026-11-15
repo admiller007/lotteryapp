@@ -595,10 +595,9 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       }
 
       const replacedName = state.allUsers[replacedId]?.name || 'Previous winner';
-      if (newWinnerId) {
-        const newName = state.allUsers[newWinnerId]?.name || 'Unknown User';
-        toast({ title: "Winner Re-drawn!", description: `${newName} wins ${prize.name} (replacing ${replacedName}).` });
-      } else {
+      // A successful redraw is announced by the winner reveal, so no toast
+      // here (it would give the name away while the reel is spinning).
+      if (!newWinnerId) {
         toast({ title: "No Other Eligible Entrants", description: `${replacedName} was removed from ${prize.name}, but no one else is eligible to win it.` });
       }
 
@@ -896,6 +895,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       return {
         ...state,
         winners: action.payload,
+        winnersSynced: true,
         pendingConflict: null,
         drawsPaused: false,
       };
@@ -1187,6 +1187,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         );
 
         // Now set up winners listener
+        let receivedFirstWinners = false;
         winnersUnsubscribe = onSnapshot(collection(db, 'winners'), (snapshot) => {
           const winnersData: Record<string, string[]> = {};
 
@@ -1234,7 +1235,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             return true;
           };
 
-          if (!isWinnersDataEqual(winnersRef.current, winnersData)) {
+          // Always dispatch the first snapshot so winnersSynced gets set, even
+          // when there are no winners yet.
+          if (!receivedFirstWinners || !isWinnersDataEqual(winnersRef.current, winnersData)) {
+            receivedFirstWinners = true;
             dispatch({
               type: 'SYNC_WINNERS_FROM_FIREBASE',
               payload: winnersData

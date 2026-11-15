@@ -48,6 +48,8 @@ export interface AuctionContextState {
   // Admin switch stored in Firestore (settings/lottery); when false nobody can change tickets.
   allocationsOpen: boolean;
   winners: Record<string, string[]>;
+  // True once the first winners snapshot has arrived from Firestore.
+  winnersSynced?: boolean;
   allUsers: Record<string, { id: string; name: string; tickets?: number; facilityName?: string; pin?: string; profilePictureUrl?: string; status?: 'inactive' | 'working' | 'at_party' }>;
   pendingConflict: PrizeConflict | null;
   drawsPaused: boolean;

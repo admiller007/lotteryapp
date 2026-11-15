@@ -294,12 +294,9 @@ export default function AdminPage() {
 
   // Handle toast messages for single winner draws
   useEffect(() => {
-    if (state.lastAction?.type === 'SINGLE_WINNER_DRAWN') {
-      toast({
-        title: "Winner Drawn!",
-        description: `${state.lastAction.winnerName} has won ${state.lastAction.prizeName}!`,
-      });
-    } else if (state.lastAction?.type === 'NO_ENTRIES_ERROR') {
+    // SINGLE_WINNER_DRAWN is announced by the winner reveal in WinnerDrawing;
+    // a toast here would give the name away while the reel is still spinning.
+    if (state.lastAction?.type === 'NO_ENTRIES_ERROR') {
       toast({
         title: "Cannot Draw Winner",
         description: `No entries found for ${state.lastAction.prizeName}`,

@@ -10,8 +10,19 @@ import { Switch } from '@/components/ui/switch';
 import { Trophy, Shuffle, Target, Users, Gift, Zap, UserCheck, Lock, LockOpen } from 'lucide-react';
 import { useAppContext, buildDrawingPool } from '@/context/AppContext';
 import { toast } from '@/hooks/use-toast';
-import SlotMachine from '@/components/SlotMachine';
+import WinnerReveal, { type RevealPerson } from '@/components/WinnerReveal';
 import type { Prize } from '@/lib/types';
+
+interface ActiveDraw {
+  prizeId: string;
+  /** Winners of the prize before this draw, so we can spot the new one. */
+  baseline: string[];
+  /** Known up front for manual assignment; otherwise found by diffing. */
+  winnerId?: string;
+  candidates: RevealPerson[];
+  /** lastAction when the draw started; a newer error means the draw failed. */
+  startAction: unknown;
+}
 
 export default function WinnerDrawing() {
   const { state, dispatch, isAdmin } = useAppContext();
@@ -39,12 +50,7 @@ export default function WinnerDrawing() {
   const [manualPrizeId, setManualPrizeId] = useState<string>('');
   const [manualWinnerId, setManualWinnerId] = useState<string>('');
   const [isDrawAllDialogOpen, setIsDrawAllDialogOpen] = useState(false);
-  const [showSlotMachine, setShowSlotMachine] = useState(false);
-  const [currentDrawnWinner, setCurrentDrawnWinner] = useState<{
-    winnerName: string;
-    prizeName: string;
-    winnerProfilePicture?: string;
-  } | null>(null);
+  const [activeDraw, setActiveDraw] = useState<ActiveDraw | null>(null);
   const conflictUser = pendingConflict ? allUsers[pendingConflict.userId] : null;
   const existingConflictPrize = pendingConflict ? prizes.find(p => p.id === pendingConflict.existingPrizeId) : null;
   const newConflictPrize = pendingConflict ? prizes.find(p => p.id === pendingConflict.newPrizeId) : null;
@@ -76,15 +82,36 @@ export default function WinnerDrawing() {
   const getPrizeWinners = (prizeId: string) => winners[prizeId] || [];
   const prizeHasAllWinners = (prize: Prize) => getPrizeWinners(prize.id).length >= (prize.numberOfWinners || 1);
 
-  if (!isAdmin) {
-    return (
-      <Alert>
-        <AlertDescription>
-          Admin access required to draw winners.
-        </AlertDescription>
-      </Alert>
-    );
-  }
+  const toPerson = (userId: string): RevealPerson => {
+    const user = allUsers[userId];
+    return {
+      id: userId,
+      name: user?.name || userId,
+      profilePictureUrl: user?.profilePictureUrl,
+      facilityName: user?.facilityName,
+    };
+  };
+
+  // Everyone who could still win this prize, for the reel.
+  const reelCandidates = (prize: Prize, excluded: Set<string>) =>
+    Array.from(new Set(buildDrawingPool(prize, excluded, allUsers))).map(toPerson);
+
+  const startReveal = (prize: Prize, candidates: RevealPerson[], winnerId?: string) => {
+    setActiveDraw({
+      prizeId: prize.id,
+      baseline: [...(winners[prize.id] || [])],
+      winnerId,
+      candidates,
+      startAction: state.lastAction,
+    });
+  };
+
+  const activeDrawPrize = activeDraw ? prizes.find((p) => p.id === activeDraw.prizeId) : undefined;
+  const activeDrawTier = activeDrawPrize ? prizeTiers.find((t) => t.id === activeDrawPrize.tierId) : undefined;
+  const activeDrawWinnerId = activeDraw
+    ? activeDraw.winnerId ?? (winners[activeDraw.prizeId] || []).find((id) => !activeDraw.baseline.includes(id))
+    : undefined;
+  const activeDrawWinner = activeDrawWinnerId ? toPerson(activeDrawWinnerId) : null;
 
   const handleDrawAllWinners = () => {
     if (pendingConflict || drawsPaused) {
@@ -155,34 +182,15 @@ export default function WinnerDrawing() {
     }
 
     const prize: Prize | undefined = prizes.find((p) => p.id === selectedPrize);
-    const prizeName = prize?.name ?? 'selected prize';
-    
-    // Show slot machine first, then dispatch
     if (prize) {
-      setCurrentDrawnWinner({
-        winnerName: 'Drawing...',
-        prizeName: prize.name,
-        winnerProfilePicture: undefined
-      });
-      setShowSlotMachine(true);
-      
-      // Dispatch after a small delay to show slot machine first
-      setTimeout(() => {
-        dispatch({ 
-          type: 'DRAW_SINGLE_WINNER', 
-          payload: { prizeId: selectedPrize } 
-        });
-      }, 100);
-    } else {
-      dispatch({ 
-        type: 'DRAW_SINGLE_WINNER', 
-        payload: { prizeId: selectedPrize } 
-      });
-      toast({
-        title: "Winner Drawn!",
-        description: `Winner has been drawn for ${prizeName}.`
-      });
+      // Same pool the reducer draws from: nobody who already holds a prize.
+      const excluded = new Set<string>(Object.values(winners).flat());
+      startReveal(prize, reelCandidates(prize, excluded));
     }
+    dispatch({
+      type: 'DRAW_SINGLE_WINNER',
+      payload: { prizeId: selectedPrize }
+    });
     setSelectedPrize('');
   };
 
@@ -207,22 +215,16 @@ export default function WinnerDrawing() {
     // Same eligibility rule the reducer uses: nobody who holds a prize, and
     // not the person being replaced.
     const excluded = new Set<string>([...Object.values(winners).flat(), winnerId]);
-    const hasEligible = buildDrawingPool(prize, excluded, state.allUsers).length > 0;
+    const candidates = reelCandidates(prize, excluded);
+
+    if (candidates.length > 0) {
+      startReveal(prize, candidates);
+    }
 
     dispatch({
       type: 'REDRAW_PRIZE_WINNER',
       payload: { prizeId, winnerId }
     });
-
-    if (hasEligible) {
-      // "Drawing..." lets the effect below fill in the newly drawn winner.
-      setCurrentDrawnWinner({
-        winnerName: 'Drawing...',
-        prizeName: prize.name,
-        winnerProfilePicture: undefined
-      });
-      setShowSlotMachine(true);
-    }
   };
 
   const handleAssignSpecificWinner = () => {
@@ -264,13 +266,10 @@ export default function WinnerDrawing() {
       return;
     }
 
-    const winner = state.allUsers[manualWinnerId];
-    setCurrentDrawnWinner({
-      winnerName: winner?.name || 'Selected winner',
-      prizeName: prize.name,
-      winnerProfilePicture: winner?.profilePictureUrl,
-    });
-    setShowSlotMachine(true);
+    const entrants = Array.from(
+      new Set(prize.entries.filter((entry) => entry.numTickets > 0).map((entry) => entry.userId))
+    ).map(toPerson);
+    startReveal(prize, entrants, manualWinnerId);
 
     dispatch({
       type: 'ASSIGN_SPECIFIC_WINNER',
@@ -281,15 +280,14 @@ export default function WinnerDrawing() {
     setManualWinnerId('');
   };
 
-  const handleSlotMachineComplete = () => {
-    setShowSlotMachine(false);
-    setCurrentDrawnWinner(null);
-    if (currentDrawnWinner) {
+  const handleRevealComplete = () => {
+    if (activeDrawWinner && activeDrawPrize) {
       toast({
         title: "Winner Announced!",
-        description: `${currentDrawnWinner.winnerName} wins ${currentDrawnWinner.prizeName}!`
+        description: `${activeDrawWinner.name} wins ${activeDrawPrize.name}!`
       });
     }
+    setActiveDraw(null);
   };
 
   const handleRandomlyAllocateTickets = async () => {
@@ -398,33 +396,19 @@ export default function WinnerDrawing() {
     });
   };
 
-  // Watch for winner updates and update slot machine display
+  // If the draw failed (no eligible entrants, etc.), close the reveal now
+  // instead of spinning until it times out. The admin page toasts the error.
   useEffect(() => {
-    if (showSlotMachine && currentDrawnWinner && currentDrawnWinner.winnerName === 'Drawing...') {
-      // Find the prize we're drawing for
-      const prizesInProgress = Object.keys(state.winners);
-      for (const prizeId of prizesInProgress) {
-        const prizeWinnerIds = getPrizeWinners(prizeId);
-        const winnerId = prizeWinnerIds[prizeWinnerIds.length - 1];
-        const winner = winnerId ? state.allUsers[winnerId] : undefined;
-        const prize = prizes.find(p => p.id === prizeId);
-
-        if (winner && prize && prize.name === currentDrawnWinner.prizeName) {
-          setCurrentDrawnWinner({
-            winnerName: winner.name,
-            prizeName: prize.name,
-            winnerProfilePicture: winner.profilePictureUrl
-          });
-          break;
-        }
-      }
+    if (!activeDraw || activeDrawWinnerId) return;
+    const action = state.lastAction;
+    if (action && action !== activeDraw.startAction && (action.type === 'ERROR' || action.type === 'NO_ENTRIES_ERROR')) {
+      setActiveDraw(null);
     }
-  }, [state.winners, showSlotMachine, currentDrawnWinner, prizes, state.allUsers]);
+  }, [state.lastAction, activeDraw, activeDrawWinnerId]);
 
   useEffect(() => {
     if (pendingConflict) {
-      setShowSlotMachine(false);
-      setCurrentDrawnWinner(null);
+      setActiveDraw(null);
       const conflictUser = allUsers[pendingConflict.userId];
       const existingPrize = prizes.find(p => p.id === pendingConflict.existingPrizeId);
       const newPrize = prizes.find(p => p.id === pendingConflict.newPrizeId);
@@ -436,6 +420,16 @@ export default function WinnerDrawing() {
     }
   }, [pendingConflict]);
 
+  if (!isAdmin) {
+    return (
+      <Alert>
+        <AlertDescription>
+          Admin access required to draw winners.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
   const prizesWithEntries = prizes.filter(p => p.entries.length > 0);
   const prizesWithWinners = prizes.filter(p => getPrizeWinners(p.id).length > 0);
   const tiersWithPrizes = prizeTiers.filter(tier => {
@@ -446,17 +440,20 @@ export default function WinnerDrawing() {
 
   return (
     <div className="space-y-6">
-      {showSlotMachine && currentDrawnWinner && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <SlotMachine
-            winnerName={currentDrawnWinner.winnerName}
-            prizeName={currentDrawnWinner.prizeName}
-            winnerProfilePicture={currentDrawnWinner.winnerProfilePicture}
-            allUsers={Object.values(state.allUsers)}
-            onComplete={handleSlotMachineComplete}
-            autoStart={true}
-          />
-        </div>
+      {activeDraw && activeDrawPrize && (
+        <WinnerReveal
+          key={`${activeDraw.prizeId}:${activeDraw.baseline.join(',')}`}
+          prize={{
+            name: activeDrawPrize.name,
+            imageUrl: activeDrawPrize.imageUrl,
+            tierName: activeDrawTier?.name,
+            tierColor: activeDrawTier?.color,
+          }}
+          candidates={activeDraw.candidates}
+          winner={activeDrawWinner}
+          onComplete={handleRevealComplete}
+          autoAdvanceMs={12000}
+        />
       )}
       
       <Card>
