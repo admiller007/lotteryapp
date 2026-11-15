@@ -14,7 +14,9 @@ interface PrizeCardProps {
 
 export default function PrizeCard({ prize }: PrizeCardProps) {
   const { state } = useAppContext();
-  const { isAuctionOpen, winners, currentUser, allUsers, prizeTiers } = state;
+  const { isAuctionOpen, allocationsOpen, winners, currentUser, allUsers, prizeTiers } = state;
+  const canAllocate = isAuctionOpen && allocationsOpen;
+  const myTicketsHere = currentUser?.allocatedTickets?.[prize.id] || 0;
   const prizeWinners = winners[prize.id] || [];
   const primaryWinnerId = prizeWinners[0];
   const winner = primaryWinnerId ? allUsers[primaryWinnerId] : null;
@@ -98,7 +100,7 @@ export default function PrizeCard({ prize }: PrizeCardProps) {
         </CardDescription>
       </CardContent>
       <CardFooter className="p-4 border-t">
-        {isAuctionOpen && currentUser ? ( // Also check if currentUser exists
+        {canAllocate && currentUser ? (
           <TicketAllocator prizeId={prize.id} />
         ) : prizeWinners.length > 0 ? (
           <div className={`flex items-center p-2 rounded-md w-full ${isCurrentUserWinner ? 'bg-success/20' : 'bg-secondary'}`}>
@@ -109,8 +111,17 @@ export default function PrizeCard({ prize }: PrizeCardProps) {
                 .join(', ')}
             </span>
           </div>
-        ) : isAuctionOpen && !currentUser ? ( // If auction is open but no user logged in
+        ) : canAllocate && !currentUser ? (
            <p className="text-sm text-muted-foreground p-2 text-center w-full">Log in to allocate tickets.</p>
+        ) : !allocationsOpen ? (
+          <div className="text-sm text-muted-foreground p-2 rounded-md w-full bg-secondary text-center">
+            Ticket allocation is closed.
+            {currentUser && (
+              <span className="block font-medium text-foreground">
+                You have {myTicketsHere} ticket{myTicketsHere === 1 ? '' : 's'} on this prize.
+              </span>
+            )}
+          </div>
         ) : (
           <div className="text-sm text-muted-foreground p-2 rounded-md w-full bg-secondary">
             No winner for this prize.

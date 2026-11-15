@@ -11,6 +11,7 @@ import {
   writeBatch,
   Timestamp,
   getDoc,
+  setDoc,
   runTransaction
 } from 'firebase/firestore';
 import { 
@@ -306,6 +307,24 @@ export const getUserByCredentials = async (
   }
 };
 
+// Lottery-wide settings (single doc). A missing doc means allocations are open.
+export const LOTTERY_SETTINGS_PATH = ['settings', 'lottery'] as const;
+
+export class AllocationsClosedError extends Error {
+  constructor() {
+    super('Ticket allocation is closed');
+    this.name = 'AllocationsClosedError';
+  }
+}
+
+export const setAllocationsOpen = async (open: boolean): Promise<void> => {
+  await setDoc(
+    doc(db, ...LOTTERY_SETTINGS_PATH),
+    { allocationsOpen: open, updatedAt: Timestamp.now() },
+    { merge: true }
+  );
+};
+
 // Ticket Allocation Management
 export const allocateTickets = async (
   allocation: Omit<FirebaseAllocation, 'id'>
@@ -338,6 +357,13 @@ export const allocateTickets = async (
     // simultaneous allocations to the same prize can no longer overwrite each
     // other's entries.
     return await runTransaction(db, async (transaction) => {
+      // Enforce the admin's "close allocation" switch here too, so a browser
+      // that hasn't received the change yet still can't write.
+      const settingsSnapshot = await transaction.get(doc(db, ...LOTTERY_SETTINGS_PATH));
+      if (settingsSnapshot.exists() && settingsSnapshot.data().allocationsOpen === false) {
+        throw new AllocationsClosedError();
+      }
+
       const prizeSnapshot = await transaction.get(prizeRef);
       if (!prizeSnapshot.exists()) {
         throw new Error('Prize not found');

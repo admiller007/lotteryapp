@@ -6,7 +6,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Shuffle, Target, Users, Gift, Zap, UserCheck } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Trophy, Shuffle, Target, Users, Gift, Zap, UserCheck, Lock, LockOpen } from 'lucide-react';
 import { useAppContext, buildDrawingPool } from '@/context/AppContext';
 import { toast } from '@/hooks/use-toast';
 import SlotMachine from '@/components/SlotMachine';
@@ -14,7 +15,25 @@ import type { Prize } from '@/lib/types';
 
 export default function WinnerDrawing() {
   const { state, dispatch, isAdmin } = useAppContext();
-  const { prizes, prizeTiers, winners, isAuctionOpen, pendingConflict, drawsPaused, allUsers } = state;
+  const { prizes, prizeTiers, winners, isAuctionOpen, allocationsOpen, pendingConflict, drawsPaused, allUsers } = state;
+  const [savingAllocationLock, setSavingAllocationLock] = useState(false);
+
+  const handleToggleAllocations = async (open: boolean) => {
+    setSavingAllocationLock(true);
+    try {
+      const { setAllocationsOpen } = await import('@/lib/firebaseService');
+      await setAllocationsOpen(open);
+      toast({
+        title: open ? "Ticket allocation opened" : "Ticket allocation closed",
+        description: open ? "Everyone can change their tickets again." : "Nobody can change tickets until you reopen it.",
+      });
+    } catch (error) {
+      console.error('Failed to update allocation setting:', error);
+      toast({ title: "Couldn't change ticket allocation", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setSavingAllocationLock(false);
+    }
+  };
   const [selectedTier, setSelectedTier] = useState<string>('');
   const [selectedPrize, setSelectedPrize] = useState<string>('');
   const [manualPrizeId, setManualPrizeId] = useState<string>('');
@@ -448,6 +467,27 @@ export default function WinnerDrawing() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Ticket allocation lock */}
+          <div className={`flex items-center justify-between gap-4 p-4 rounded-lg border ${allocationsOpen ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/30' : 'border-green-300 bg-green-50 dark:bg-green-950/30'}`}>
+            <div className="flex items-start gap-3">
+              {allocationsOpen ? <LockOpen className="h-5 w-5 mt-0.5 text-amber-600" /> : <Lock className="h-5 w-5 mt-0.5 text-green-600" />}
+              <div>
+                <p className="font-semibold">Ticket allocation is {allocationsOpen ? 'open' : 'closed'}</p>
+                <p className="text-sm text-muted-foreground">
+                  {allocationsOpen
+                    ? 'People can still move tickets. Close it before you start drawing.'
+                    : 'Tickets are locked for everyone. Safe to draw.'}
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={allocationsOpen}
+              onCheckedChange={handleToggleAllocations}
+              disabled={savingAllocationLock}
+              aria-label="Ticket allocation open"
+            />
+          </div>
+
           {pendingConflict && (
             <div className="p-4 border border-yellow-300/70 bg-yellow-50 rounded-lg space-y-3">
               <div className="flex items-center gap-2">
