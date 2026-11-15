@@ -16,6 +16,7 @@ export interface Prize {
   totalTicketsInPrize: number;
   tierId?: string;
   numberOfWinners?: number;
+  excludedFacilities?: string[];
 }
 
 export interface AppUser {
@@ -64,6 +65,7 @@ export type AuctionAction =
   | { type: 'ALLOCATE_TICKETS'; payload: { prizeId: string; userId: string; userName: string; count: number } }
   | { type: 'DRAW_WINNERS' }
   | { type: 'DRAW_SINGLE_WINNER'; payload: { prizeId: string } }
+  | { type: 'ASSIGN_SPECIFIC_WINNER'; payload: { prizeId: string; userId: string } }
   | { type: 'DRAW_TIER_WINNERS'; payload: { tierId: string } }
   | { type: 'RESET_AUCTION' }
   | { type: 'REDRAW_PRIZE_WINNER'; payload: { prizeId: string } }

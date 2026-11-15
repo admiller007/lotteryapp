@@ -1,7 +1,7 @@
 
 "use client";
 import type { Dispatch, ReactNode } from 'react';
-import React, { createContext, useContext, useReducer, useMemo, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useMemo, useEffect, useRef } from 'react';
 import type { Prize, AppUser, AuctionContextState, AuctionAction, PrizeTier } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
 import { PARTY_CHECKIN_FLAG_KEY } from '@/lib/partyCheckIn';
@@ -18,6 +18,7 @@ const initialPrizes: Prize[] = [
     entries: [],
     totalTicketsInPrize: 0,
     numberOfWinners: 1,
+    excludedFacilities: [],
   },
   {
     id: 'prize2',
@@ -27,6 +28,7 @@ const initialPrizes: Prize[] = [
     entries: [],
     totalTicketsInPrize: 0,
     numberOfWinners: 1,
+    excludedFacilities: [],
   },
   {
     id: 'prize3',
@@ -36,6 +38,7 @@ const initialPrizes: Prize[] = [
     entries: [],
     totalTicketsInPrize: 0,
     numberOfWinners: 1,
+    excludedFacilities: [],
   },
 ];
 
@@ -78,12 +81,21 @@ const initialState: AuctionContextState = {
   },
 };
 
-const buildDrawingPool = (prize: Prize, excludedUserIds: Set<string> = new Set<string>()) => {
+const buildDrawingPool = (
+  prize: Prize,
+  excludedUserIds: Set<string> = new Set<string>(),
+  allUsers: AuctionContextState['allUsers'] = {}
+) => {
   const drawingPool: string[] = [];
+  const normalizedExcludedFacilities = (prize.excludedFacilities || [])
+    .map(facility => facility.trim().toLowerCase())
+    .filter(Boolean);
 
   prize.entries.forEach(entry => {
     if (entry.numTickets <= 0) return;
     if (excludedUserIds.has(entry.userId)) return;
+    const facilityName = allUsers[entry.userId]?.facilityName?.trim().toLowerCase();
+    if (facilityName && normalizedExcludedFacilities.includes(facilityName)) return;
 
     for (let i = 0; i < entry.numTickets; i++) {
       drawingPool.push(entry.userId);
@@ -96,9 +108,10 @@ const buildDrawingPool = (prize: Prize, excludedUserIds: Set<string> = new Set<s
 const pickWinnerWithConflictCheck = (
   prize: Prize,
   currentWinners: Record<string, string[]>,
-  excludedUserIds: Set<string> = new Set<string>()
+  excludedUserIds: Set<string> = new Set<string>(),
+  allUsers: AuctionContextState['allUsers'] = {}
 ) => {
-  const drawingPool = buildDrawingPool(prize, excludedUserIds);
+  const drawingPool = buildDrawingPool(prize, excludedUserIds, allUsers);
 
   if (drawingPool.length === 0) {
     return { winnerId: null as string | null, conflictPrizeId: null as string | null };
@@ -281,7 +294,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         const slotsToFill = desiredWinners - currentPrizeWinners.length;
 
         for (let i = 0; i < slotsToFill; i++) {
-          const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, updatedWinners, assignedWinners);
+          const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, updatedWinners, assignedWinners, state.allUsers);
 
           if (!winnerId) break;
 
@@ -371,7 +384,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       }
 
       const excluded = new Set<string>(Object.values(state.winners).flat());
-      const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, state.winners, excluded);
+      const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, state.winners, excluded, state.allUsers);
 
       if (!winnerId) {
         return {
@@ -410,6 +423,87 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       return {
         ...state,
         winners: { ...state.winners, [prizeId]: [...currentPrizeWinners, winnerId] },
+        pendingConflict: null,
+        drawsPaused: false,
+        lastAction: { type: 'SINGLE_WINNER_DRAWN', winnerName, prizeName: prize.name },
+      };
+    }
+    case 'ASSIGN_SPECIFIC_WINNER': {
+      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state;
+      if (state.pendingConflict) {
+        return {
+          ...state,
+          lastAction: { type: 'WINNER_CONFLICT_PENDING', message: 'Resolve the existing winner conflict before drawing more prizes.' },
+        };
+      }
+
+      const { prizeId, userId } = action.payload;
+      const prize = state.prizes.find((p) => p.id === prizeId);
+      if (!prize) {
+        return {
+          ...state,
+          lastAction: { type: 'ERROR', message: 'Prize not found for manual winner selection.' },
+        };
+      }
+
+      const desiredWinners = prize.numberOfWinners || 1;
+      const currentPrizeWinners = state.winners[prizeId] || [];
+
+      if (currentPrizeWinners.includes(userId)) {
+        return state;
+      }
+
+      if (currentPrizeWinners.length >= desiredWinners) {
+        return {
+          ...state,
+          lastAction: { type: 'ERROR', message: 'This prize already has all winners drawn. Use redraw if needed.' },
+        };
+      }
+
+      const hasEntriesForPrize = prize.entries.some((entry) => entry.userId === userId && entry.numTickets > 0);
+      if (!hasEntriesForPrize) {
+        return {
+          ...state,
+          lastAction: { type: 'ERROR', message: 'Selected winner does not have entries for this prize.' },
+        };
+      }
+
+      const conflictPrizeId =
+        Object.entries(state.winners).find(
+          ([pId, uIds]) => pId !== prize.id && uIds.includes(userId)
+        )?.[0] || null;
+
+      if (conflictPrizeId) {
+        const conflict = {
+          id: `conflict-${Date.now()}`,
+          userId,
+          userName: state.allUsers[userId]?.name,
+          existingPrizeId: conflictPrizeId,
+          newPrizeId: prize.id,
+        };
+        return {
+          ...state,
+          pendingConflict: conflict,
+          drawsPaused: true,
+          lastAction: { type: 'WINNER_CONFLICT', message: `${conflict.userName || 'Selected user'} already holds another prize. Resolve the conflict to continue.` },
+        };
+      }
+
+      const winnerName = state.allUsers[userId]?.name || 'Unknown User';
+      const updatedPrizeWinners = [...currentPrizeWinners, userId];
+      const updatedWinners = { ...state.winners, [prizeId]: updatedPrizeWinners };
+
+      import('@/lib/firebaseService').then(async ({ saveWinner }) => {
+        try {
+          await saveWinner(prizeId, userId);
+        } catch (error) {
+          console.error('Failed to save winner to Firebase:', error);
+        }
+      });
+
+      return {
+        ...state,
+        winners: updatedWinners,
         pendingConflict: null,
         drawsPaused: false,
         lastAction: { type: 'SINGLE_WINNER_DRAWN', winnerName, prizeName: prize.name },
@@ -474,7 +568,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       const refreshedPrizeWinners: string[] = [];
       for (let i = 0; i < desiredWinners; i++) {
         const excluded = new Set<string>([...otherPrizeWinners, ...refreshedPrizeWinners]);
-        const { winnerId } = pickWinnerWithConflictCheck(prize, { ...state.winners, [prizeId]: refreshedPrizeWinners }, excluded);
+        const { winnerId } = pickWinnerWithConflictCheck(prize, { ...state.winners, [prizeId]: refreshedPrizeWinners }, excluded, state.allUsers);
         if (!winnerId) break;
         refreshedPrizeWinners.push(winnerId);
       }
@@ -581,7 +675,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         const slotsToFill = desiredWinners - currentPrizeWinners.length;
 
         for (let i = 0; i < slotsToFill; i++) {
-          const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, newWinners, assignedWinners);
+          const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(prize, newWinners, assignedWinners, state.allUsers);
 
           if (!winnerId) break;
 
@@ -649,7 +743,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       const updatedWinners = { ...state.winners };
 
       // Ensure the kept prize is assigned to the user
-      updatedWinners[keepPrizeId] = userId;
+      updatedWinners[keepPrizeId] = [userId];
 
       // Vacate the dropped prize before redrawing
       delete updatedWinners[dropPrizeId];
@@ -661,11 +755,12 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         const { winnerId, conflictPrizeId } = pickWinnerWithConflictCheck(
           dropPrize,
           updatedWinners,
-          new Set([userId])
+          new Set([userId]),
+          state.allUsers
         );
 
         if (winnerId && !conflictPrizeId) {
-          updatedWinners[dropPrizeId] = winnerId;
+          updatedWinners[dropPrizeId] = [winnerId];
         } else if (winnerId && conflictPrizeId) {
           nextConflict = {
             id: `conflict-${Date.now()}`,
@@ -796,6 +891,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [state, dispatch] = useReducer(auctionReducer, loadPersistedState());
   const [isHydrated, setIsHydrated] = React.useState(false);
   const [allocationsLoaded, setAllocationsLoaded] = React.useState<string | null>(null);
+  const winnersRef = useRef(state.winners);
 
   // Hydrate from localStorage on client side only
   React.useEffect(() => {
@@ -959,9 +1055,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   }, [state.currentUser, state.prizes, state.winners, state.isAuctionOpen, state.allUsers, state.prizeTiers, state.pendingConflict, state.drawsPaused]);
 
   // Load Firebase data on mount and set up real-time listeners
+  // Keep winnersRef in sync with latest state so the Firebase listener
+  // always compares against the current value (avoids stale closure).
+  useEffect(() => {
+    winnersRef.current = state.winners;
+  }, [state.winners]);
+
   React.useEffect(() => {
     let winnersUnsubscribe: (() => void) | null = null;
-    
+
     const setupFirebaseData = async () => {
       try {
         // Load Firebase prizes and users first
@@ -1082,7 +1184,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             return true;
           };
 
-          if (!isWinnersDataEqual(state.winners, winnersData)) {
+          if (!isWinnersDataEqual(winnersRef.current, winnersData)) {
             dispatch({
               type: 'SYNC_WINNERS_FROM_FIREBASE',
               payload: winnersData
