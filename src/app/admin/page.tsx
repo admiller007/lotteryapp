@@ -10,17 +10,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { PlusCircle, Edit3, Trash2, Play, RefreshCcw, Award, ShieldAlert, Upload, Users, Gift, Layers, Ticket, Trophy, Camera, UserPlus, X, Bug } from 'lucide-react';
+import { PlusCircle, Edit3, Trash2, Play, RefreshCcw, Award, ShieldAlert, Upload, Users, Gift, Layers, Ticket, Trophy, Camera, UserPlus, X, Bug, Download, FileText, FileSpreadsheet } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { addUsers, getUsers, type FirebaseUser, addPrize, getPrizes, updatePrize, deletePrize, convertFirebasePrizeToAppPrize, type FirebasePrize, deleteUserAndCleanup, adminUploadUserProfilePicture, adminRemoveUserProfilePicture, debugWinnersAndUsers, addUser, updateUser } from '@/lib/firebaseService';
+import { addUsers, getUsers, type FirebaseUser, addPrize, getPrizes, updatePrize, deletePrize, convertFirebasePrizeToAppPrize, type FirebasePrize, deleteUserAndCleanup, adminUploadUserProfilePicture, adminRemoveUserProfilePicture, debugWinnersAndUsers, addUser, updateUser, getWinnersForExport } from '@/lib/firebaseService';
 import FirebasePrizeManager from '@/components/FirebasePrizeManager';
 import WinnerDrawing from '@/components/WinnerDrawing';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import jsPDF from 'jspdf';
+import { format } from 'date-fns';
 
 type PrizeFormData = Omit<Prize, 'id' | 'entries' | 'totalTicketsInPrize' | 'winnerId'>;
 
@@ -72,6 +74,8 @@ export default function AdminPage() {
   const [creatingUser, setCreatingUser] = useState(false);
   const [userEdits, setUserEdits] = useState<Record<string, { tickets: number; status: 'inactive' | 'working' | 'at_party' }>>({});
   const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [exportingCSV, setExportingCSV] = useState(false);
+  const [exportingPDF, setExportingPDF] = useState(false);
 
   const ADMIN_IDS = ['ADMIN001', 'DEV007'];
 
@@ -523,6 +527,159 @@ export default function AdminPage() {
     }
   };
 
+  const handleExportCSV = async () => {
+    setExportingCSV(true);
+    try {
+      const winnersData = await getWinnersForExport();
+
+      if (winnersData.length === 0) {
+        toast({
+          title: "No Winners",
+          description: "There are no winners to export yet.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Create CSV content
+      const headers = ['Prize Name', 'Prize Description', 'Winner First Name', 'Winner Last Name', 'Employee ID', 'Facility', 'Date/Time'];
+      const rows = winnersData.map(winner => [
+        winner.prizeName,
+        winner.prizeDescription,
+        winner.winnerFirstName,
+        winner.winnerLastName,
+        winner.winnerEmployeeId,
+        winner.winnerFacility,
+        format(winner.timestamp, 'yyyy-MM-dd HH:mm:ss')
+      ]);
+
+      // Escape CSV fields (handle commas, quotes, newlines)
+      const escapeCSVField = (field: string) => {
+        if (field.includes(',') || field.includes('"') || field.includes('\n')) {
+          return `"${field.replace(/"/g, '""')}"`;
+        }
+        return field;
+      };
+
+      const csvContent = [
+        headers.map(escapeCSVField).join(','),
+        ...rows.map(row => row.map(escapeCSVField).join(','))
+      ].join('\n');
+
+      // Download CSV
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `lottery_winners_${format(new Date(), 'yyyy-MM-dd_HH-mm-ss')}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Export Successful",
+        description: `Exported ${winnersData.length} winners to CSV.`
+      });
+    } catch (error: any) {
+      console.error('Error exporting CSV:', error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export winners to CSV.",
+        variant: "destructive"
+      });
+    } finally {
+      setExportingCSV(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    setExportingPDF(true);
+    try {
+      const winnersData = await getWinnersForExport();
+
+      if (winnersData.length === 0) {
+        toast({
+          title: "No Winners",
+          description: "There are no winners to export yet.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Create PDF
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 15;
+      let yPosition = margin;
+
+      // Title
+      doc.setFontSize(20);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Lottery Winners Report', pageWidth / 2, yPosition, { align: 'center' });
+      yPosition += 10;
+
+      // Date
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Generated: ${format(new Date(), 'MMMM dd, yyyy HH:mm')}`, pageWidth / 2, yPosition, { align: 'center' });
+      yPosition += 15;
+
+      // Winners
+      doc.setFontSize(12);
+      winnersData.forEach((winner, index) => {
+        // Check if we need a new page
+        if (yPosition > pageHeight - 40) {
+          doc.addPage();
+          yPosition = margin;
+        }
+
+        // Winner number
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${index + 1}. ${winner.prizeName}`, margin, yPosition);
+        yPosition += 6;
+
+        // Prize description
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(10);
+        const descLines = doc.splitTextToSize(winner.prizeDescription, pageWidth - 2 * margin);
+        doc.text(descLines, margin + 5, yPosition);
+        yPosition += descLines.length * 5;
+
+        // Winner details
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Winner: ${winner.winnerFirstName} ${winner.winnerLastName}`, margin + 5, yPosition);
+        yPosition += 5;
+        doc.text(`Employee ID: ${winner.winnerEmployeeId}`, margin + 5, yPosition);
+        yPosition += 5;
+        doc.text(`Facility: ${winner.winnerFacility}`, margin + 5, yPosition);
+        yPosition += 5;
+        doc.text(`Date: ${format(winner.timestamp, 'MMMM dd, yyyy HH:mm')}`, margin + 5, yPosition);
+        yPosition += 10;
+
+        doc.setFontSize(12);
+      });
+
+      // Save PDF
+      doc.save(`lottery_winners_${format(new Date(), 'yyyy-MM-dd_HH-mm-ss')}.pdf`);
+
+      toast({
+        title: "Export Successful",
+        description: `Exported ${winnersData.length} winners to PDF.`
+      });
+    } catch (error: any) {
+      console.error('Error exporting PDF:', error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export winners to PDF.",
+        variant: "destructive"
+      });
+    } finally {
+      setExportingPDF(false);
+    }
+  };
+
   const handleDrawWinners = () => {
     dispatch({ type: 'DRAW_WINNERS' });
   };
@@ -800,6 +957,44 @@ export default function AdminPage() {
                   </CardContent>
                 </Card>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-headline text-2xl flex items-center">
+                <Download className="mr-3 h-7 w-7 text-primary" /> Export Winners
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                Download a complete list of all lottery winners with their prize and contact information.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  onClick={handleExportCSV}
+                  disabled={exportingCSV || winnersCount === 0}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  <FileSpreadsheet className="h-4 w-4" />
+                  {exportingCSV ? 'Exporting...' : 'Export as CSV'}
+                </Button>
+                <Button
+                  onClick={handleExportPDF}
+                  disabled={exportingPDF || winnersCount === 0}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  <FileText className="h-4 w-4" />
+                  {exportingPDF ? 'Exporting...' : 'Export as PDF'}
+                </Button>
+              </div>
+              {winnersCount === 0 && (
+                <p className="text-xs text-muted-foreground mt-3">
+                  No winners have been drawn yet. Draw winners to enable export.
+                </p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
