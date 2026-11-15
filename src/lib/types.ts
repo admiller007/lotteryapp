@@ -71,7 +71,7 @@ export type AuctionAction =
   | { type: 'DRAW_TIER_WINNERS'; payload: { tierId: string } }
   | { type: 'RESET_AUCTION' }
   | { type: 'SET_ALLOCATIONS_OPEN'; payload: { open: boolean } }
-  | { type: 'REDRAW_PRIZE_WINNER'; payload: { prizeId: string } }
+  | { type: 'REDRAW_PRIZE_WINNER'; payload: { prizeId: string; winnerId?: string } }
   | { type: 'LOGIN_USER'; payload: { firstName: string; lastName: string; facilityName: string; pin: string } }
   | { type: 'LOGIN_SUCCESS'; payload: { user: AppUser; userName: string } }
   | { type: 'LOGIN_ERROR'; payload: { message: string } }

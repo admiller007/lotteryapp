@@ -231,30 +231,26 @@ export const deleteUserAndCleanup = async (userId: string): Promise<void> => {
 
 export const resetAuctionData = async (): Promise<void> => {
   try {
-    const batch = writeBatch(db);
+    const [allocationsSnapshot, prizesSnapshot, winnersSnapshot] = await Promise.all([
+      getDocs(collection(db, 'allocations')),
+      getDocs(collection(db, 'prizes')),
+      getDocs(collection(db, 'winners')),
+    ]);
 
-    // Delete all allocations
-    const allocationsSnapshot = await getDocs(collection(db, 'allocations'));
-    allocationsSnapshot.forEach((docSnap) => {
-      batch.delete(docSnap.ref);
-    });
+    type Op = (batch: ReturnType<typeof writeBatch>) => void;
+    const ops: Op[] = [
+      ...allocationsSnapshot.docs.map((d): Op => (b) => b.delete(d.ref)),
+      ...prizesSnapshot.docs.map((d): Op => (b) => b.update(d.ref, { entries: [], totalTicketsInPrize: 0 })),
+      ...winnersSnapshot.docs.map((d): Op => (b) => b.delete(d.ref)),
+    ];
 
-    // Clear prize entries and totals
-    const prizesSnapshot = await getDocs(collection(db, 'prizes'));
-    prizesSnapshot.forEach((prizeDoc) => {
-      batch.update(prizeDoc.ref, {
-        entries: [],
-        totalTicketsInPrize: 0,
-      });
-    });
-
-    // Delete winner documents
-    const winnersSnapshot = await getDocs(collection(db, 'winners'));
-    winnersSnapshot.forEach((winnerDoc) => {
-      batch.delete(winnerDoc.ref);
-    });
-
-    await batch.commit();
+    // A Firestore batch holds at most 500 writes; with one allocation doc per
+    // user per prize, a real event easily exceeds that.
+    for (let i = 0; i < ops.length; i += 450) {
+      const batch = writeBatch(db);
+      ops.slice(i, i + 450).forEach((op) => op(batch));
+      await batch.commit();
+    }
   } catch (error) {
     console.error('Error resetting auction data:', error);
     throw error;
