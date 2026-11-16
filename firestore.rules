@@ -1,0 +1,67 @@
+rules_version = '2';
+
+// Who can read and write what, enforced by Firestore itself.
+//
+// - Admin rights come from the `admin` claim on the Firebase sign-in token,
+//   which only the server's /api/auth/login route can set (from users/{id}.role).
+// - PINs live in userSecrets, which no browser can read.
+// - Ticket allocations go through /api/allocations (server), so normal users
+//   can't write prizes or allocations directly.
+//
+// Deploy with: npx firebase-tools deploy --only firestore:rules --project <project-id>
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn() && request.auth.token.admin == true;
+    }
+
+    function isSelf(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // Public profile. Readable by everyone because the winners screen shows
+    // names and photos. PINs must never be written here.
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if isAdmin() && !('pin' in request.resource.data);
+      allow update: if (isAdmin() && !changedKeys().hasAny(['pin']))
+        || (isSelf(userId) && changedKeys().hasOnly(['profilePictureUrl']));
+      allow delete: if isAdmin();
+    }
+
+    match /prizes/{prizeId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /prizeTiers/{tierId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /winners/{winnerId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /allocations/{allocationId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow write: if isAdmin();
+    }
+
+    // userSecrets and anything else: server only (no rule = denied).
+  }
+}

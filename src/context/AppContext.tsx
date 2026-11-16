@@ -2,13 +2,34 @@
 "use client";
 import type { Dispatch, ReactNode } from 'react';
 import React, { createContext, useContext, useReducer, useMemo, useEffect, useRef } from 'react';
-import type { Prize, AppUser, AuctionContextState, AuctionAction, PrizeTier } from '@/lib/types';
-import type { FirebasePrize } from '@/lib/firebaseService';
+import type { Prize, AppUser, AuctionContextState, AuctionAction, PrizeTier, DirectoryUser } from '@/lib/types';
+import type { FirebasePrize, FirebaseUser } from '@/lib/firebaseService';
 import { toast } from '@/hooks/use-toast';
 import { PARTY_CHECKIN_FLAG_KEY } from '@/lib/partyCheckIn';
 
-// Define Admin Employee IDs here. In a real app, this would come from a secure config.
-const ADMIN_EMPLOYEE_IDS = ['ADMIN001', 'DEV007']; // Example Admin IDs
+// Older versions saved the whole app state, including every user's PIN, here.
+const LEGACY_STORAGE_KEY = 'lotteryAppState';
+// Fired when the server rejects an allocation so the provider can reload the
+// user's real allocations (the reducer has already applied the change).
+const ALLOCATION_FAILED_EVENT = 'lottery:allocation-failed';
+
+// Map of user ID -> public user info, for names and photos on the draw and
+// winners screens. Users are keyed by document ID (used by allocations and
+// winners) and also by employeeId for older records.
+export const toDirectory = (users: FirebaseUser[]): Record<string, DirectoryUser> =>
+  users.reduce<Record<string, DirectoryUser>>((acc, user) => {
+    const entry: DirectoryUser = {
+      id: user.id || user.employeeId,
+      name: `${user.firstName} ${user.lastName}`,
+      tickets: user.tickets,
+      facilityName: user.facilityName,
+      profilePictureUrl: user.profilePictureUrl,
+      status: user.status || 'inactive',
+    };
+    if (user.id) acc[user.id] = entry;
+    if (user.employeeId) acc[user.employeeId] = entry;
+    return acc;
+  }, {});
 
 const initialPrizes: Prize[] = [
   {
@@ -77,11 +98,7 @@ const initialState: AuctionContextState = {
   winners: {},
   pendingConflict: null,
   drawsPaused: false,
-  allUsers: {
-    // Pre-populated admin users
-    'ADMIN001': { id: 'ADMIN001', name: 'Admin User', tickets: 100, facilityName: 'Admin Office', pin: 'admin123', status: 'working' },
-    'DEV007': { id: 'DEV007', name: 'Developer Admin', tickets: 100, facilityName: 'Dev Office', pin: 'dev456', status: 'working' },
-  },
+  allUsers: {},
 };
 
 const buildDrawingPool = (
@@ -136,23 +153,18 @@ const AppContext = createContext<{
   remainingTickets: number;
   isAdmin: boolean;
   isHydrated: boolean;
+  logout: () => Promise<void>;
 }>({
   state: initialState,
   dispatch: () => null,
   remainingTickets: 0,
   isAdmin: false,
   isHydrated: false,
+  logout: async () => {},
 });
 
 const auctionReducer = (state: AuctionContextState, action: AuctionAction): AuctionContextState => {
   switch (action.type) {
-    case 'LOGIN_USER': {
-      // This will be handled by the component now
-      return {
-        ...state,
-        lastAction: { type: 'LOGIN_PENDING' },
-      };
-    }
     case 'LOGIN_SUCCESS': {
       const { user, userName } = action.payload;
       return {
@@ -176,7 +188,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       };
     }
     case 'ADD_PRIZE': {
-      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state; 
+      if (!state.currentUser || !state.currentUser.isAdmin) return state; 
       const newPrize: Prize = {
         ...action.payload,
         id: `prize-${Date.now()}`,
@@ -186,7 +198,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       return { ...state, prizes: [...state.prizes, newPrize] };
     }
     case 'UPDATE_PRIZE': {
-      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state;
+      if (!state.currentUser || !state.currentUser.isAdmin) return state;
       return {
         ...state,
         prizes: state.prizes.map((p) =>
@@ -195,7 +207,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       };
     }
     case 'DELETE_PRIZE': {
-      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state;
+      if (!state.currentUser || !state.currentUser.isAdmin) return state;
       const updatedAllocatedTickets = { ...state.currentUser.allocatedTickets };
       delete updatedAllocatedTickets[action.payload.prizeId];
       
@@ -247,30 +259,26 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       };
 
 
-      // Save to Firebase
-      // allocateTickets updates the prize's entries in a Firestore transaction.
-      // Don't also write this client's copy of prize.entries: it can be stale
-      // and would wipe out other users' allocations to the same prize.
-      import('@/lib/firebaseService').then(async ({ allocateTickets }) => {
+      // The server checks the ticket limit and the "allocation closed" switch,
+      // and updates the prize's entries in a transaction. Don't also write
+      // this client's copy of prize.entries: it can be stale and would wipe
+      // out other users' allocations to the same prize.
+      import('@/lib/apiClient').then(async ({ allocateTicketsApi }) => {
         try {
-          await allocateTickets({
-            lotteryId: 'default', // Using default lottery ID
+          await allocateTicketsApi({
             prizeId,
-            userId,
-            userName,
             tickets: count,
-            timestamp: new Date().toISOString()
+            // Admins can allocate for others (random-allocation test tool).
+            ...(userId !== state.currentUser?.id ? { userId } : {}),
           });
         } catch (error) {
-          console.error('Failed to save allocation to Firebase:', error);
-          const closed = (error as Error)?.name === 'AllocationsClosedError';
+          console.error('Failed to save allocation:', error);
           toast({
-            title: closed ? "Ticket allocation is closed" : "Tickets not saved",
-            description: closed
-              ? "Your change wasn't saved because ticket allocation has been closed."
-              : "We couldn't save that allocation. Please try again.",
+            title: "Tickets not saved",
+            description: (error as Error)?.message || "We couldn't save that allocation. Please try again.",
             variant: "destructive",
           });
+          if (typeof window !== 'undefined') window.dispatchEvent(new Event(ALLOCATION_FAILED_EVENT));
         }
       });
 
@@ -286,7 +294,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       };
     }
     case 'DRAW_WINNERS': {
-      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId) || !state.isAuctionOpen) return state;
+      if (!state.currentUser || !state.currentUser.isAdmin || !state.isAuctionOpen) return state;
       if (state.pendingConflict) {
         return {
           ...state,
@@ -369,7 +377,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       };
     }
     case 'DRAW_SINGLE_WINNER': {
-      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state;
+      if (!state.currentUser || !state.currentUser.isAdmin) return state;
       if (state.pendingConflict) {
         return {
           ...state,
@@ -443,7 +451,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       };
     }
     case 'ASSIGN_SPECIFIC_WINNER': {
-      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state;
+      if (!state.currentUser || !state.currentUser.isAdmin) return state;
       if (state.pendingConflict) {
         return {
           ...state,
@@ -524,7 +532,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       };
     }
     case 'RESET_AUCTION': {
-      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state; 
+      if (!state.currentUser || !state.currentUser.isAdmin) return state; 
       
       // Clear allocations, prize entries, and winners from Firebase
       import('@/lib/firebaseService').then(async ({ resetAuctionData }) => {
@@ -555,7 +563,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       // Replaces ONE winner of a prize (e.g. they're not present). Allowed at
       // any time: admins usually draw prize-by-prize, so the auction is still
       // "open" when a redraw is needed.
-      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) {
+      if (!state.currentUser || !state.currentUser.isAdmin) {
         toast({ title: "Action Denied", description: "Admin login required.", variant: "destructive" });
         return state;
       }
@@ -637,7 +645,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       };
     }
     case 'ADD_PRIZE_TIER': {
-      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state;
+      if (!state.currentUser || !state.currentUser.isAdmin) return state;
       const newTier: PrizeTier = {
         ...action.payload,
         id: `tier-${Date.now()}`,
@@ -648,7 +656,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       };
     }
     case 'UPDATE_PRIZE_TIER': {
-      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state;
+      if (!state.currentUser || !state.currentUser.isAdmin) return state;
       return {
         ...state,
         prizeTiers: state.prizeTiers.map(tier =>
@@ -657,7 +665,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       };
     }
     case 'DELETE_PRIZE_TIER': {
-      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state;
+      if (!state.currentUser || !state.currentUser.isAdmin) return state;
       const { tierId } = action.payload;
       // Remove tier assignment from all prizes in this tier
       const updatedPrizes = state.prizes.map(prize => 
@@ -670,7 +678,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
       };
     }
     case 'DRAW_TIER_WINNERS': {
-      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) return state;
+      if (!state.currentUser || !state.currentUser.isAdmin) return state;
       if (state.pendingConflict) {
         return {
           ...state,
@@ -849,40 +857,6 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         allUsers: updatedUsers,
       };
     }
-    case 'UPLOAD_USERS': {
-      if (!state.currentUser || !ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId)) {
-        return {
-          ...state,
-          lastAction: { type: 'ACCESS_DENIED', message: "Admin login required to upload users." },
-        };
-      }
-
-      const newUsers: Record<string, AuctionContextState['allUsers'][string]> = {};
-      
-      action.payload.forEach((userData) => {
-        const userName = `${userData.firstName} ${userData.lastName}`;
-        // Create deterministic user ID based on unique user info
-        const userId = `user_${userName.replace(/\s+/g, '_').toLowerCase()}_${userData.facilityName.replace(/\s+/g, '_').toLowerCase()}_${userData.pin}`;
-        
-        newUsers[userId] = {
-          id: userId,
-          name: userName,
-          tickets: userData.tickets,
-          facilityName: userData.facilityName,
-          pin: userData.pin,
-          status: userData.status || 'inactive',
-        };
-      });
-
-      return {
-        ...state,
-        allUsers: {
-          ...state.allUsers,
-          ...newUsers,
-        },
-        lastAction: { type: 'USERS_UPLOADED', message: `Successfully uploaded ${action.payload.length} users` },
-      };
-    }
     case 'UPDATE_PROFILE_PICTURE': {
       const { userId, profilePictureUrl } = action.payload;
       if (!state.currentUser || state.currentUser.id !== userId) {
@@ -911,70 +885,104 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
   }
 };
 
-// Load state from localStorage if available
-const loadPersistedState = (): AuctionContextState => {
-  return initialState; // Always return initial state for SSR
-};
-
 export const AppProvider = ({ children }: { children: ReactNode }) => {
-  const [state, dispatch] = useReducer(auctionReducer, loadPersistedState());
+  const [state, dispatch] = useReducer(auctionReducer, initialState);
+  // True once Firebase Auth has told us whether someone is signed in (and
+  // their profile has loaded), so pages don't redirect before then.
   const [isHydrated, setIsHydrated] = React.useState(false);
   const [allocationsLoaded, setAllocationsLoaded] = React.useState<string | null>(null);
   const winnersRef = useRef(state.winners);
+  const currentUserIdRef = useRef<string | null>(null);
 
-  // Hydrate from localStorage on client side only
-  React.useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('lotteryAppState');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          // Merge persisted allUsers with initial admin users
-          const mergedUsers: Record<string, AuctionContextState['allUsers'][string]> = {
-            ...initialState.allUsers,
-            ...parsed.allUsers,
-          };
+  useEffect(() => {
+    currentUserIdRef.current = state.currentUser?.id ?? null;
+  }, [state.currentUser]);
 
-          const normalizedUsers = (Object.entries(mergedUsers) as Array<[string, AuctionContextState['allUsers'][string]]>).reduce(
-            (acc, [userId, user]) => {
-              acc[userId] = {
-                ...user,
-                id: user.id || userId,
-              };
-              return acc;
-            },
-            {} as Record<string, AuctionContextState['allUsers'][string]>
-          );
-          
-          // Restore state from localStorage but exclude winners (they come from Firebase)
-          const restoredState = { 
-            ...initialState, 
-            ...parsed,
-            winners: {}, // Always start with empty winners - Firebase will populate
-            allUsers: normalizedUsers,
-            currentUser: parsed.currentUser || null,
-            prizeTiers: parsed.prizeTiers || initialPrizeTiers,
-            pendingConflict: null,
-            drawsPaused: false,
-          };
-          
-          if (parsed.currentUser) {
-            dispatch({
-              type: 'LOGIN_SUCCESS',
-              payload: { user: parsed.currentUser, userName: parsed.currentUser.name }
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Error loading persisted state:', error);
-      }
-      setIsHydrated(true);
+  // The signed-in user comes from Firebase Auth, which only the server's
+  // login route can start (it checks the PIN). Admin rights come from the
+  // token's admin claim, not from anything stored in the browser.
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+    let cancelled = false;
+
+    try {
+      // Remove the old saved state, which included other users' PINs.
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch {
+      // storage unavailable
     }
+
+    (async () => {
+      const [{ auth, db }, { onAuthStateChanged, signOut }, { doc, getDoc }] = await Promise.all([
+        import('@/lib/firebase'),
+        import('firebase/auth'),
+        import('firebase/firestore'),
+      ]);
+      if (cancelled) return;
+
+      unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+        try {
+          if (!firebaseUser) {
+            if (currentUserIdRef.current) dispatch({ type: 'LOGOUT_USER' });
+            return;
+          }
+
+          const [tokenResult, profileSnap] = await Promise.all([
+            firebaseUser.getIdTokenResult(),
+            getDoc(doc(db, 'users', firebaseUser.uid)),
+          ]);
+          if (!profileSnap.exists()) {
+            // User was deleted; end the session.
+            await signOut(auth);
+            return;
+          }
+
+          const profile = profileSnap.data() as FirebaseUser;
+          const user: AppUser = {
+            id: firebaseUser.uid,
+            firstName: profile.firstName,
+            lastName: profile.lastName,
+            employeeId: profile.employeeId || firebaseUser.uid,
+            facilityName: profile.facilityName,
+            name: `${profile.firstName} ${profile.lastName}`,
+            totalInitialTickets: profile.tickets || 0,
+            allocatedTickets: {},
+            status: profile.status || 'inactive',
+            profilePictureUrl: profile.profilePictureUrl,
+            isAdmin: tokenResult.claims.admin === true,
+          };
+          dispatch({ type: 'LOGIN_SUCCESS', payload: { user, userName: user.name } });
+        } catch (error) {
+          console.error('Failed to restore login:', error);
+        } finally {
+          setIsHydrated(true);
+        }
+      });
+    })().catch((error) => {
+      console.error('Firebase Auth unavailable:', error);
+      setIsHydrated(true);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, []);
 
-  // Add demo prizes and prize tiers to Firebase if they don't exist
+  const logout = React.useCallback(async () => {
+    try {
+      const [{ auth }, { signOut }] = await Promise.all([import('@/lib/firebase'), import('firebase/auth')]);
+      await signOut(auth);
+    } catch (error) {
+      console.error('Sign-out failed:', error);
+    }
+    dispatch({ type: 'LOGOUT_USER' });
+  }, []);
+
+  // Create demo prizes and tiers in an empty database (admins only: nobody
+  // else may write prizes).
   React.useEffect(() => {
-    if (isHydrated && state.currentUser) {
+    if (isHydrated && state.currentUser?.isAdmin) {
       import('@/lib/firebaseService').then(async ({ addPrize, getPrizes, addPrizeTier, getPrizeTiers }) => {
         try {
           const [existingPrizes, existingPrizeTiers] = await Promise.all([
@@ -1037,7 +1045,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         }
       });
     }
-  }, [isHydrated, state.currentUser]);
+  }, [isHydrated, state.currentUser?.isAdmin]);
 
   // Load user allocations from Firebase when user logs in
   React.useEffect(() => {
@@ -1072,16 +1080,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [state.currentUser]);
 
-  // Save state to localStorage whenever it changes
+  // The server rejected an allocation: reload the user's real allocations.
   React.useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('lotteryAppState', JSON.stringify(state));
-      } catch (error) {
-        console.error('Error saving state to localStorage:', error);
-      }
-    }
-  }, [state.currentUser, state.prizes, state.winners, state.isAuctionOpen, state.allUsers, state.prizeTiers, state.pendingConflict, state.drawsPaused]);
+    const reload = () => {
+      const userId = currentUserIdRef.current;
+      if (!userId) return;
+      import('@/lib/firebaseService')
+        .then(({ getUserAllocations }) => getUserAllocations(userId))
+        .then((allocatedTickets) => dispatch({ type: 'LOAD_USER_ALLOCATIONS', payload: { userId, allocatedTickets } }))
+        .catch((error) => console.error('Failed to reload allocations:', error));
+    };
+    window.addEventListener(ALLOCATION_FAILED_EVENT, reload);
+    return () => window.removeEventListener(ALLOCATION_FAILED_EVENT, reload);
+  }, []);
 
   // Load Firebase data on mount and set up real-time listeners
   // Keep winnersRef in sync with latest state so the Firebase listener
@@ -1140,43 +1151,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           dispatch({ type: 'SET_FIREBASE_PRIZE_TIERS', payload: convertedTiers });
         }
         
-        // Set Firebase users
+        // Public user directory (names, facilities, photos; no PINs)
         if (firebaseUsers.length > 0) {
-          const usersMap = firebaseUsers.reduce<Record<string, AuctionContextState['allUsers'][string]>>((acc, user) => {
-            const userObj = {
-              id: user.id || user.employeeId,
-              name: `${user.firstName} ${user.lastName}`,
-              tickets: user.tickets,
-              facilityName: user.facilityName,
-              pin: user.pin,
-              profilePictureUrl: user.profilePictureUrl,
-              status: user.status || 'inactive',
-            };
-
-            // Map by Firebase document ID (used for winners)
-            if (user.id) {
-              acc[user.id] = userObj;
-            }
-
-            // Also map by employeeId (used for allocations)
-            if (user.employeeId) {
-              acc[user.employeeId] = userObj;
-            }
-
-            return acc;
-          }, {});
-
-          // Ensure admin users are always included in the mapping
-          const adminUsers = {
-            'ADMIN001': { id: 'ADMIN001', name: 'Admin User', tickets: 100, facilityName: 'Admin Office', pin: 'admin123', status: 'working' },
-            'DEV007': { id: 'DEV007', name: 'Developer Admin', tickets: 100, facilityName: 'Dev Office', pin: 'dev456', status: 'working' },
-          };
-
-          // Add admin users to the mapping
-          Object.entries(adminUsers).forEach(([id, user]) => {
-            usersMap[id] = user;
-          });
-
+          const usersMap = toDirectory(firebaseUsers);
           dispatch({ type: 'UPSERT_ALL_USERS', payload: usersMap });
         }
         
@@ -1283,13 +1260,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return state.currentUser.totalInitialTickets - allocatedSum;
   }, [state.currentUser]);
 
-  const isAdmin = useMemo(() => {
-    if (!state.currentUser) return false;
-    return ADMIN_EMPLOYEE_IDS.includes(state.currentUser.employeeId);
-  }, [state.currentUser]);
+  const isAdmin = !!state.currentUser?.isAdmin;
 
   return (
-    <AppContext.Provider value={{ state, dispatch, remainingTickets, isAdmin, isHydrated }}>
+    <AppContext.Provider value={{ state, dispatch, remainingTickets, isAdmin, isHydrated, logout }}>
       {children}
     </AppContext.Provider>
   );
@@ -1305,70 +1279,33 @@ export const useAppContext = () => {
 
 export const useFirebaseLogin = () => {
   const { dispatch } = useAppContext();
-  
+
+  // The server checks the PIN and returns a Firebase sign-in token. Signing in
+  // with it fires the auth listener in AppProvider, which loads the profile
+  // and dispatches LOGIN_SUCCESS.
   const loginWithFirebase = async (firstName: string, lastName: string, facilityName: string, pin: string) => {
-    const userName = `${firstName} ${lastName}`;
-
+    const partyCheckIn = typeof window !== 'undefined' && localStorage.getItem(PARTY_CHECKIN_FLAG_KEY) === 'true';
     try {
-      const { getUserByCredentials, updateUser } = await import('@/lib/firebaseService');
-      const firebaseUser = await getUserByCredentials(firstName, lastName, facilityName, pin);
-
-      if (!firebaseUser) {
-        dispatch({
-          type: 'LOGIN_ERROR',
-          payload: { message: 'Invalid credentials' }
-        });
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firstName, lastName, facilityName, pin, partyCheckIn }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.token) {
+        dispatch({ type: 'LOGIN_ERROR', payload: { message: data.error || 'Login failed. Please try again.' } });
         return;
       }
-      
-      // If the user came from the party check-in link/QR, mark them as at_party
-      const partyCheckInRequested = typeof window !== 'undefined' && localStorage.getItem(PARTY_CHECKIN_FLAG_KEY) === 'true';
-      let finalStatus: 'inactive' | 'working' | 'at_party' = (firebaseUser.status as any) || 'inactive';
 
-      if (partyCheckInRequested && finalStatus !== 'at_party') {
-        try {
-          if (firebaseUser.id) {
-            await updateUser(firebaseUser.id, { status: 'at_party' });
-          }
-          finalStatus = 'at_party';
-        } catch (statusError) {
-          console.error('Failed to update user status to at_party:', statusError);
-        } finally {
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem(PARTY_CHECKIN_FLAG_KEY);
-          }
-        }
-      } else if (partyCheckInRequested && typeof window !== 'undefined') {
-        // Clean up intent flag even if already at_party
-        localStorage.removeItem(PARTY_CHECKIN_FLAG_KEY);
-      }
-
-      const newUser: AppUser = {
-        id: firebaseUser.id || firebaseUser.employeeId,
-        firstName: firebaseUser.firstName,
-        lastName: firebaseUser.lastName,
-        employeeId: firebaseUser.employeeId,
-        facilityName: firebaseUser.facilityName,
-        name: userName,
-        totalInitialTickets: firebaseUser.tickets,
-        allocatedTickets: {},
-        status: finalStatus,
-        profilePictureUrl: firebaseUser.profilePictureUrl,
-      };
-      
-      dispatch({
-        type: 'LOGIN_SUCCESS',
-        payload: { user: newUser, userName }
-      });
+      if (partyCheckIn) localStorage.removeItem(PARTY_CHECKIN_FLAG_KEY);
+      const [{ auth }, { signInWithCustomToken }] = await Promise.all([import('@/lib/firebase'), import('firebase/auth')]);
+      await signInWithCustomToken(auth, data.token);
     } catch (error) {
-      console.error('Firebase login error:', error);
-      dispatch({
-        type: 'LOGIN_ERROR',
-        payload: { message: 'Login failed. Please try again.' }
-      });
+      console.error('Login error:', error);
+      dispatch({ type: 'LOGIN_ERROR', payload: { message: 'Login failed. Please try again.' } });
     }
   };
-  
+
   return { loginWithFirebase };
 };
 

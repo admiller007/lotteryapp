@@ -1,6 +1,6 @@
 import { initializeApp, FirebaseApp } from 'firebase/app';
-import { getFirestore, Firestore } from 'firebase/firestore';
-import { getAuth, Auth } from 'firebase/auth';
+import { getFirestore, Firestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getAuth, Auth, connectAuthEmulator } from 'firebase/auth';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 import { firebaseConfig, isFirebaseConfigured, missingVars } from './config';
 
@@ -29,6 +29,12 @@ export function ensureFirebaseInitialized(): void {
     _db = getFirestore(_app);
     _auth = getAuth(_app);
     _storage = getStorage(_app);
+
+    // Local testing against the Firebase emulators (see firebase.json).
+    if (process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATORS === 'true') {
+      connectFirestoreEmulator(_db, '127.0.0.1', 8080);
+      connectAuthEmulator(_auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+    }
   }
 }
 

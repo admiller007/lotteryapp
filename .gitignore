@@ -46,3 +46,7 @@ vercel-env-vars.txt
 # firebase
 firebase-debug.log
 firestore-debug.log
+# firebase emulators
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*

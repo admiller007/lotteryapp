@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export default function AppHeader() {
-  const { state, dispatch, isAdmin } = useAppContext();
+  const { state, logout, isAdmin } = useAppContext();
   const { currentUser } = state;
   const router = useRouter();
   const [isHydrated, setIsHydrated] = useState(false);
@@ -27,8 +27,8 @@ export default function AppHeader() {
     setIsHydrated(true);
   }, []);
 
-  const handleLogout = () => {
-    dispatch({ type: 'LOGOUT_USER' });
+  const handleLogout = async () => {
+    await logout();
     router.push('/login');
   };
 
