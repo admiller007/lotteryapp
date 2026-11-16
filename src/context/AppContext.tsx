@@ -73,6 +73,7 @@ const initialState: AuctionContextState = {
   currentUser: null, // No user logged in initially
   isAuctionOpen: true,
   allocationsOpen: true,
+  drawStyle: 'slot',
   winners: {},
   pendingConflict: null,
   drawsPaused: false,
@@ -547,6 +548,7 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
         allUsers: state.allUsers, // keep names; reset only clears tickets and winners
         prizes: state.prizes.map(p => ({ ...p, entries: [], totalTicketsInPrize: 0 })), 
         prizeTiers: state.prizeTiers,
+        drawStyle: state.drawStyle, // a display setting, not lottery data
       };
     }
     case 'REDRAW_PRIZE_WINNER': {
@@ -617,6 +619,10 @@ const auctionReducer = (state: AuctionContextState, action: AuctionAction): Auct
     case 'SET_ALLOCATIONS_OPEN': {
       if (state.allocationsOpen === action.payload.open) return state;
       return { ...state, allocationsOpen: action.payload.open };
+    }
+    case 'SET_DRAW_STYLE': {
+      if (state.drawStyle === action.payload.drawStyle) return state;
+      return { ...state, drawStyle: action.payload.drawStyle };
     }
     case 'SET_FIREBASE_PRIZES': {
       return {
@@ -1108,6 +1114,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           (snap) => {
             const open = !snap.exists() || snap.data().allocationsOpen !== false;
             dispatch({ type: 'SET_ALLOCATIONS_OPEN', payload: { open } });
+            // Admin's choice of draw animation, so the projector follows it live.
+            const drawStyle = snap.exists() && snap.data().drawStyle === 'wheel' ? 'wheel' : 'slot';
+            dispatch({ type: 'SET_DRAW_STYLE', payload: { drawStyle } });
           },
           (error) => console.error('Settings listener error:', error)
         );

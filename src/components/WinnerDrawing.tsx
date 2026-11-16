@@ -7,11 +7,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Trophy, Shuffle, Target, Users, Gift, Zap, UserCheck, Lock, LockOpen } from 'lucide-react';
+import { Trophy, Shuffle, Target, Users, Gift, Zap, UserCheck, Lock, LockOpen, Cherry, FerrisWheel, Play } from 'lucide-react';
 import { useAppContext, buildDrawingPool } from '@/context/AppContext';
 import { toast } from '@/hooks/use-toast';
 import WinnerReveal, { type RevealPerson } from '@/components/WinnerReveal';
-import type { Prize } from '@/lib/types';
+import type { DrawStyle, Prize } from '@/lib/types';
 
 interface ActiveDraw {
   prizeId: string;
@@ -26,8 +26,53 @@ interface ActiveDraw {
 
 export default function WinnerDrawing() {
   const { state, dispatch, isAdmin } = useAppContext();
-  const { prizes, prizeTiers, winners, isAuctionOpen, allocationsOpen, pendingConflict, drawsPaused, allUsers } = state;
+  const { prizes, prizeTiers, winners, isAuctionOpen, allocationsOpen, pendingConflict, drawsPaused, allUsers, drawStyle } = state;
   const [savingAllocationLock, setSavingAllocationLock] = useState(false);
+  const [savingDrawStyle, setSavingDrawStyle] = useState(false);
+  const [preview, setPreview] = useState<{ prizeName: string; prizeImage?: string; candidates: RevealPerson[]; winner: RevealPerson } | null>(null);
+
+  const handleDrawStyleChange = async (next: DrawStyle) => {
+    if (next === drawStyle) return;
+    const previous = drawStyle;
+    dispatch({ type: 'SET_DRAW_STYLE', payload: { drawStyle: next } });
+    setSavingDrawStyle(true);
+    try {
+      const { setDrawStyle } = await import('@/lib/firebaseService');
+      await setDrawStyle(next);
+      toast({
+        title: next === 'slot' ? 'Slot machine selected' : 'Prize wheel selected',
+        description: 'Every screen will use it for the next draw.',
+      });
+    } catch (error) {
+      console.error('Failed to save draw style:', error);
+      dispatch({ type: 'SET_DRAW_STYLE', payload: { drawStyle: previous } });
+      toast({ title: "Couldn't change the draw animation", description: 'Please try again.', variant: 'destructive' });
+    } finally {
+      setSavingDrawStyle(false);
+    }
+  };
+
+  // A practice run with real names and photos. Nothing is drawn or saved.
+  const handlePreview = () => {
+    const people: RevealPerson[] = Object.entries(allUsers)
+      .filter(([userId]) => !userId.includes('ADMIN') && !userId.includes('DEV'))
+      .map(([userId, user]) => ({
+        id: userId,
+        name: user.name,
+        profilePictureUrl: user.profilePictureUrl,
+        facilityName: user.facilityName,
+      }));
+    const pool = people.length > 0
+      ? people.sort(() => Math.random() - 0.5).slice(0, 40)
+      : ['Alex Morgan', 'Sam Rivera', 'Jordan Lee', 'Taylor Kim', 'Casey Patel', 'Riley Chen'].map((name, i) => ({ id: `sample-${i}`, name }));
+    const samplePrize = prizes.find((p) => p.imageUrl) ?? prizes[0];
+    setPreview({
+      prizeName: samplePrize ? `${samplePrize.name} (practice)` : 'Practice draw',
+      prizeImage: samplePrize?.imageUrl,
+      candidates: pool,
+      winner: pool[Math.floor(Math.random() * pool.length)],
+    });
+  };
 
   const handleToggleAllocations = async (open: boolean) => {
     setSavingAllocationLock(true);
@@ -451,7 +496,18 @@ export default function WinnerDrawing() {
           }}
           candidates={activeDraw.candidates}
           winner={activeDrawWinner}
+          drawStyle={drawStyle}
           onComplete={handleRevealComplete}
+          autoAdvanceMs={12000}
+        />
+      )}
+      {preview && (
+        <WinnerReveal
+          prize={{ name: preview.prizeName, imageUrl: preview.prizeImage }}
+          candidates={preview.candidates}
+          winner={preview.winner}
+          drawStyle={drawStyle}
+          onComplete={() => setPreview(null)}
           autoAdvanceMs={12000}
         />
       )}
@@ -464,6 +520,47 @@ export default function WinnerDrawing() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Draw animation */}
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-lg font-semibold">Draw animation</h3>
+              <Button variant="outline" size="sm" onClick={handlePreview} disabled={!!activeDraw}>
+                <Play className="h-4 w-4 mr-2" />
+                Practice run
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="Draw animation">
+              {([
+                { value: 'slot', label: 'Slot machine', description: 'Three reels stop on the winner for a jackpot.', Icon: Cherry },
+                { value: 'wheel', label: 'Prize wheel', description: 'A big wheel spins and stops on the winner.', Icon: FerrisWheel },
+              ] as const).map(({ value, label, description, Icon }) => {
+                const selected = drawStyle === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    disabled={savingDrawStyle}
+                    onClick={() => handleDrawStyleChange(value)}
+                    className={`flex items-start gap-3 rounded-lg border p-4 text-left transition ${
+                      selected ? 'border-primary bg-primary/10 ring-2 ring-primary' : 'hover:bg-muted'
+                    }`}
+                  >
+                    <Icon className={`h-6 w-6 shrink-0 ${selected ? 'text-primary' : 'text-muted-foreground'}`} />
+                    <span>
+                      <span className="block font-semibold">{label}</span>
+                      <span className="block text-sm text-muted-foreground">{description}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Applies to this screen and the winners screen. The practice run uses real names but draws nothing.
+            </p>
+          </div>
+
           {/* Ticket allocation lock */}
           <div className={`flex items-center justify-between gap-4 p-4 rounded-lg border ${allocationsOpen ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/30' : 'border-green-300 bg-green-50 dark:bg-green-950/30'}`}>
             <div className="flex items-start gap-3">

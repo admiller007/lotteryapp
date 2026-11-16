@@ -1,9 +1,16 @@
 "use client";
 
-import React, { forwardRef, useId, useState } from 'react';
+import React, { forwardRef, useEffect, useId, useRef, useState } from 'react';
 import { Trophy } from 'lucide-react';
 import styles from './WinnerReveal.module.css';
-import type { RevealPerson } from './WinnerReveal';
+import {
+  easeInQuad,
+  easeOutQuart,
+  mod,
+  shuffle,
+  type DrawAnimationProps,
+  type RevealPerson,
+} from './drawShared';
 
 /*
  * Casino-style prize wheel, drawn as SVG in a 1000x1000 box so it stays sharp
@@ -249,3 +256,296 @@ export const WheelPointer = forwardRef<HTMLDivElement>(function WheelPointer(_, 
     </div>
   );
 });
+
+/* ---------------- Wheel draw ---------------- */
+
+// Wheel timing. The wheel winds back slightly, spins up, cruises until the
+// winner is known (and at least MIN_SPIN_MS has passed), then slows to a stop.
+const WINDUP_MS = 380;
+const WINDUP_DEG = 14;
+const SPIN_UP_MS = 900;
+const MIN_SPIN_MS = 2600;
+const CRUISE_DEG_PER_SEC = 540; // 1.5 turns a second
+const LANDING_MS = 7500; // target length of the slow-down
+const MIN_SLICES = 8;
+const MAX_SLICES = 24;
+const MAX_FLAP_DEG = 24;
+const FLAP_ZONE = 0.3; // fraction of a slice over which a peg pushes the pointer
+const READOUT_SLICES_PER_SEC = 5; // show the name under the pointer below this speed
+
+/** Pick and colour the wheel's slices. Small groups repeat so it still looks like a wheel. */
+const buildSlices = (candidates: RevealPerson[], winner?: RevealPerson | null): WheelSlice[] => {
+  const unique = new Map<string, RevealPerson>();
+  candidates.forEach((person) => {
+    if (person?.id && !unique.has(person.id)) unique.set(person.id, person);
+  });
+  let people = shuffle(Array.from(unique.values()));
+  if (winner) {
+    people = shuffle([winner, ...people.filter((p) => p.id !== winner.id).slice(0, MAX_SLICES - 1)]);
+  } else {
+    people = people.slice(0, MAX_SLICES);
+  }
+  if (people.length === 0) people = [{ id: '?', name: '?' }];
+  const base = people;
+  while (people.length < MIN_SLICES) people = [...people, ...base];
+
+  const n = people.length;
+  const p = SLICE_COLORS.length;
+  return people.map((person, i) => {
+    // Keep the last slice from matching the first one's colour where they meet.
+    const colorIndex = i === n - 1 && n % p === 1 ? 2 : i % p;
+    return { person, color: SLICE_COLORS[colorIndex] };
+  });
+};
+
+/** The full wheel draw: prize details, the wheel, and the name under the pointer. */
+export function WheelDraw({
+  prize,
+  candidates,
+  initialWinner,
+  winnerRef,
+  entrantCount,
+  landscape,
+  reducedMotion,
+  sounds,
+  onLanded,
+}: DrawAnimationProps) {
+  const [slices, setSlices] = useState<WheelSlice[]>(() => buildSlices(candidates, initialWinner));
+  const [highlightIndex, setHighlightIndex] = useState<number | null>(null);
+  const [readout, setReadout] = useState<string | null>(null);
+  const [landed, setLanded] = useState(false);
+
+  const wheelRef = useRef<HTMLDivElement>(null);
+  const pointerRef = useRef<HTMLDivElement>(null);
+  const slicesRef = useRef(slices);
+  const onLandedRef = useRef(onLanded);
+  const soundsRef = useRef(sounds);
+  onLandedRef.current = onLanded;
+  soundsRef.current = sounds;
+
+  useEffect(() => {
+    const n = slicesRef.current.length;
+    const s = 360 / n;
+    const minSpin = reducedMotion ? 800 : MIN_SPIN_MS;
+    const landingMs = reducedMotion ? 2000 : LANDING_MS;
+
+    let theta = 0; // wheel rotation, degrees clockwise
+    let velocity = 0; // degrees per second
+    let pointerAngle = 0;
+    let lastSlice = -1;
+    let lastTickAt = 0;
+    let showingReadout = false;
+    let landing: { from: number; distance: number; start: number; duration: number; index: number } | null = null;
+    let frame = 0;
+    const start = performance.now();
+    let last = start;
+
+    if (pointerRef.current) pointerRef.current.style.transition = '';
+
+    const planLanding = (now: number, w: RevealPerson) => {
+      let current = slicesRef.current;
+      const matches = current.map((slice, i) => (slice.person.id === w.id ? i : -1)).filter((i) => i >= 0);
+      let index: number;
+      if (matches.length > 0) {
+        index = matches[Math.floor(Math.random() * matches.length)];
+      } else {
+        // Winner wasn't on the wheel (it was built before the draw). Put them
+        // on the slice furthest from the pointer, where nobody is looking,
+        // while the wheel is still a blur.
+        index = 0;
+        let best = Infinity;
+        current.forEach((_, i) => {
+          const screenAngle = mod((i + 0.5) * s + theta, 360);
+          const away = Math.abs(screenAngle - 180);
+          if (away < best) {
+            best = away;
+            index = i;
+          }
+        });
+        current = current.map((slice, i) => (i === index ? { ...slice, person: w } : slice));
+        slicesRef.current = current;
+        setSlices(current);
+      }
+
+      // Stop somewhere inside the slice (not dead centre), clear of the pegs.
+      const targetAngle = (index + 0.35 + Math.random() * 0.4) * s;
+      const angleUnderPointer = mod(-theta, 360);
+      const toTarget = mod(angleUnderPointer - targetAngle, 360);
+      // Quartic ease-out starts at 4x its average speed; pick the number of
+      // extra turns that keeps the hand-off from cruising smooth.
+      const natural = (velocity * (landingMs / 1000)) / 4;
+      const turns = Math.max(1, Math.round((natural - toTarget) / 360));
+      const distance = toTarget + 360 * turns;
+      const duration = Math.min(landingMs * 1.35, Math.max(landingMs * 0.7, ((4 * distance) / velocity) * 1000));
+      landing = { from: theta, distance, start: now, duration, index };
+    };
+
+    const loop = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const elapsed = now - start;
+
+      if (!landing) {
+        if (elapsed < WINDUP_MS) {
+          theta = -WINDUP_DEG * Math.sin((Math.PI / 2) * (elapsed / WINDUP_MS));
+          velocity = 0;
+        } else {
+          velocity = CRUISE_DEG_PER_SEC * easeInQuad(Math.min(1, (elapsed - WINDUP_MS) / SPIN_UP_MS));
+          theta += velocity * dt;
+        }
+        const w = winnerRef.current;
+        if (w && elapsed >= minSpin && velocity >= CRUISE_DEG_PER_SEC * 0.99) planLanding(now, w);
+      } else {
+        const t = Math.min(1, (now - landing.start) / landing.duration);
+        theta = landing.from + landing.distance * easeOutQuart(t);
+        velocity = (4 * landing.distance * Math.pow(1 - t, 3)) / (landing.duration / 1000);
+        if (t >= 1) {
+          if (wheelRef.current) wheelRef.current.style.transform = `rotate(${theta}deg)`;
+          if (pointerRef.current) {
+            pointerRef.current.style.transition = 'transform 350ms cubic-bezier(0.34, 1.56, 0.64, 1)';
+            pointerRef.current.style.transform = 'rotate(0deg)';
+          }
+          setReadout(slicesRef.current[landing.index].person.name);
+          setHighlightIndex(landing.index);
+          setLanded(true);
+          onLandedRef.current();
+          return;
+        }
+      }
+
+      if (wheelRef.current) wheelRef.current.style.transform = `rotate(${theta}deg)`;
+
+      // Which slice is under the pointer, and how far into it we are.
+      const position = mod(-theta, 360) / s;
+      const slice = Math.floor(position) % n;
+      const frac = position - Math.floor(position);
+      const slicesPerSec = velocity / s;
+
+      // Pointer flap: the next peg pushes the pointer as it approaches, then
+      // slips past and the pointer springs back.
+      const amplitude = slicesPerSec > 12 ? MAX_FLAP_DEG * 0.45 : MAX_FLAP_DEG;
+      const push = velocity > 0 && frac < FLAP_ZONE ? amplitude * (1 - frac / FLAP_ZONE) : 0;
+      pointerAngle = push > pointerAngle ? push : pointerAngle + (push - pointerAngle) * Math.min(1, dt * 24);
+      if (pointerRef.current) pointerRef.current.style.transform = `rotate(${-pointerAngle}deg)`;
+
+      if (slice !== lastSlice) {
+        lastSlice = slice;
+        if (now - lastTickAt > 40) {
+          lastTickAt = now;
+          soundsRef.current.tick(slicesPerSec < 8);
+        }
+        if (landing && slicesPerSec < READOUT_SLICES_PER_SEC) showingReadout = true;
+        if (showingReadout) setReadout(slicesRef.current[slice].person.name);
+      }
+
+      frame = requestAnimationFrame(loop);
+    };
+
+    frame = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(frame);
+    // The loop reads the winner through a ref; restarting it would reset the wheel.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reducedMotion]);
+
+  const isLanded = landed;
+  const rimMode = isLanded ? 'win' : readout ? 'slow' : 'spin';
+  const wheelSize = landscape ? 'min(84vh, 52vw)' : 'min(86vw, 56vh)';
+
+  const prizeImage = prize.imageUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={prize.imageUrl}
+      alt=""
+      className="rounded-3xl bg-white object-contain shadow-2xl"
+      style={landscape ? { width: '17vh', height: '17vh', padding: '1.2vh' } : { width: 72, height: 72, padding: 6 }}
+    />
+  ) : null;
+
+  const tierChip = prize.tierName ? (
+    <span
+      className="inline-flex items-center gap-2 rounded-full bg-white/10 px-[0.9em] py-[0.35em] font-semibold"
+      style={{ fontSize: landscape ? 'clamp(0.8rem, 1.1vw, 1.5rem)' : '0.75rem' }}
+    >
+      <span className="h-[0.6em] w-[0.6em] rounded-full" style={{ backgroundColor: prize.tierColor || '#f7c948' }} />
+      {prize.tierName}
+    </span>
+  ) : null;
+
+  const readoutBlock = (
+    <div
+      className={`flex flex-col justify-center ${landscape ? 'items-start' : 'items-center text-center'}`}
+      style={{ minHeight: landscape ? '18vh' : 88 }}
+      aria-live="polite"
+    >
+      {isLanded ? (
+        <>
+          <span className="font-semibold uppercase tracking-[0.3em] text-[#f7c948]" style={{ fontSize: landscape ? 'clamp(0.9rem, 1.3vw, 1.8rem)' : '0.8rem' }}>
+            The winner is
+          </span>
+          <span className={`${styles.winnerName} ${styles.riseIn}`} style={{ fontSize: landscape ? 'clamp(2rem, 4.2vw, 6.5rem)' : '2.25rem' }}>
+            {readout}
+          </span>
+        </>
+      ) : readout ? (
+        <span
+          key={readout}
+          className={`${styles.readoutPop} font-extrabold leading-tight text-white`}
+          style={{ fontSize: landscape ? 'clamp(1.75rem, 3.4vw, 5rem)' : '1.75rem' }}
+        >
+          {readout}
+        </span>
+      ) : (
+        <span className={`${styles.dots} font-semibold text-white/70`} style={{ fontSize: landscape ? 'clamp(1.25rem, 2.2vw, 3rem)' : '1.25rem' }}>
+          Spinning
+        </span>
+      )}
+    </div>
+  );
+
+  const wheel = (
+    <div className="relative shrink-0" style={{ width: wheelSize, height: wheelSize }}>
+      <div className="absolute inset-[0.5%] rounded-full shadow-[0_30px_80px_rgba(0,0,0,0.65),0_0_120px_rgba(247,201,72,0.18)]" />
+      <div ref={wheelRef} className="absolute inset-0" style={{ willChange: 'transform' }}>
+        <WheelFace slices={slices} highlightIndex={highlightIndex} />
+      </div>
+      <WheelRim mode={rimMode} />
+      <WheelHub />
+      <WheelPointer ref={pointerRef} />
+    </div>
+  );
+
+  return (
+        landscape ? (
+          /* ---------- Draw, landscape (projector): prize on the left, wheel on the right ---------- */
+          <div className="relative z-[3] flex flex-1 items-center justify-center gap-[5vw] px-[4vw] pb-[4vh]">
+            <div className="flex min-w-0 max-w-[36vw] flex-1 flex-col items-start gap-[2.2vh]">
+              {prizeImage}
+              {tierChip}
+              <h2 className="font-extrabold leading-[1.05]" style={{ fontSize: 'clamp(2rem, 4.4vw, 6.5rem)' }}>
+                {prize.name}
+              </h2>
+              <p className="text-white/60" style={{ fontSize: 'clamp(1rem, 1.4vw, 2rem)' }}>
+                {entrantCount} {entrantCount === 1 ? 'entrant' : 'entrants'}
+              </p>
+              <div className="h-px w-[60%] bg-gradient-to-r from-[#f7c948]/70 to-transparent" />
+              {readoutBlock}
+            </div>
+            <div className="pr-[3vw]">{wheel}</div>
+          </div>
+        ) : (
+          /* ---------- Draw, portrait (phone): stacked ---------- */
+          <div className="relative z-[3] flex flex-1 flex-col items-center justify-center gap-5 px-4 pb-6">
+            <div className="flex flex-col items-center gap-2 text-center">
+              {prizeImage}
+              {tierChip}
+              <h2 className="text-3xl font-extrabold leading-tight">{prize.name}</h2>
+              <p className="text-sm text-white/60">
+                {entrantCount} {entrantCount === 1 ? 'entrant' : 'entrants'}
+              </p>
+            </div>
+            <div className="pr-[5vw]">{wheel}</div>
+            {readoutBlock}
+          </div>
+        )
+  );
+}

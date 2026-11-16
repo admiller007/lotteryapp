@@ -18,7 +18,7 @@ const HIGHLIGHT_MS = 8000;
 
 export default function WinnersPage() {
   const { state } = useAppContext();
-  const { prizes, prizeTiers, winners, allUsers, isAuctionOpen, winnersSynced } = state;
+  const { prizes, prizeTiers, winners, allUsers, isAuctionOpen, winnersSynced, drawStyle } = state;
 
   const [queue, setQueue] = useState<QueuedWinner[]>([]);
   const [current, setCurrent] = useState<QueuedWinner | null>(null);
@@ -97,6 +97,7 @@ export default function WinnersPage() {
         new Set(currentPrize.entries.filter((e) => e.numTickets > 0).map((e) => e.userId))
       ).map(toPerson)}
       winner={toPerson(current.winnerId)}
+      drawStyle={drawStyle}
       onComplete={handleRevealComplete}
       autoAdvanceMs={REVEAL_AUTO_ADVANCE_MS}
       remainingCount={pendingCount}

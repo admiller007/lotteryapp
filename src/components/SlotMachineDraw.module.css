@@ -1,0 +1,243 @@
+/* Casino slot machine cabinet. Fixed palette so it reads the same in light and
+   dark themes and on a projector. */
+
+.marquee {
+  background:
+    radial-gradient(ellipse 70% 120% at 50% 0%, rgba(255, 255, 255, 0.18), transparent 60%),
+    linear-gradient(180deg, #b3172b 0%, #7f1020 60%, #5c0a14 100%);
+  border: 4px solid #f7c948;
+  border-bottom-width: 0;
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.45), 0 -10px 60px rgba(247, 201, 72, 0.15);
+  overflow: hidden;
+}
+
+.marqueeTitle {
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  background: linear-gradient(180deg, #fffbe6 20%, #f7c948 75%, #d99a1e 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 3px 0 rgba(60, 0, 10, 0.6));
+}
+
+.cabinet {
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.35), transparent 8%, transparent 92%, rgba(0, 0, 0, 0.35)),
+    linear-gradient(180deg, #8b1220 0%, #5c0a14 55%, #3b060d 100%);
+  border: 4px solid #f7c948;
+  border-top: 6px solid #d99a1e;
+  box-shadow: 0 40px 80px rgba(0, 0, 0, 0.6), inset 0 2px 0 rgba(255, 255, 255, 0.15);
+}
+
+/* Chrome frame around the reels */
+.bezel {
+  background: linear-gradient(180deg, #f8fafc 0%, #94a3b8 22%, #e2e8f0 50%, #64748b 80%, #cbd5e1 100%);
+  box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.8), inset 0 -3px 6px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+
+.reelWindow {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, #d4d4d8 0%, #ffffff 22%, #ffffff 78%, #d4d4d8 100%);
+  box-shadow: inset 0 0 0 3px #1f2937, inset 0 0 0 5px rgba(255, 255, 255, 0.4);
+  transition: box-shadow 300ms ease;
+}
+
+/* Curved-drum shading and a hint of glass */
+.reelShade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0) 12%),
+    linear-gradient(
+      180deg,
+      rgba(0, 0, 0, 0.62) 0%,
+      rgba(0, 0, 0, 0.2) 16%,
+      rgba(0, 0, 0, 0) 34%,
+      rgba(0, 0, 0, 0) 66%,
+      rgba(0, 0, 0, 0.2) 84%,
+      rgba(0, 0, 0, 0.62) 100%
+    ),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0) 14%, rgba(0, 0, 0, 0) 86%, rgba(0, 0, 0, 0.22));
+  box-shadow: inset 0 0 0 3px #1f2937;
+}
+
+.anticipate {
+  animation: anticipate 520ms ease-in-out infinite alternate;
+}
+
+@keyframes anticipate {
+  from { box-shadow: inset 0 0 0 3px #1f2937, 0 0 0 3px rgba(247, 201, 72, 0.4), 0 0 18px rgba(247, 201, 72, 0.3); }
+  to { box-shadow: inset 0 0 0 3px #1f2937, 0 0 0 5px #f7c948, 0 0 40px rgba(247, 201, 72, 0.9); }
+}
+
+.reelWin {
+  box-shadow: inset 0 0 0 3px #1f2937, 0 0 0 4px #f7c948, 0 0 36px rgba(247, 201, 72, 0.75);
+}
+
+.winAvatar {
+  box-shadow: 0 0 0 4px #f7c948, 0 0 26px rgba(247, 201, 72, 0.95);
+  animation: win-pulse 600ms ease-in-out infinite alternate;
+}
+
+@keyframes win-pulse {
+  from { scale: 1; }
+  to { scale: 1.06; }
+}
+
+.payline {
+  position: absolute;
+  top: 50%;
+  height: 3px;
+  margin-top: -1.5px;
+  background: rgba(225, 29, 46, 0.55);
+  box-shadow: 0 0 8px rgba(225, 29, 46, 0.5);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.paylineWin {
+  background: #f7c948;
+  box-shadow: 0 0 18px #f7c948, 0 0 4px #fff;
+  animation: blink 300ms steps(1, end) infinite;
+}
+
+.paylineArrowLeft,
+.paylineArrowRight {
+  position: absolute;
+  top: 50%;
+  width: 0;
+  height: 0;
+  translate: 0 -50%;
+  border-style: solid;
+  border-color: transparent;
+  z-index: 2;
+  filter: drop-shadow(0 0 4px rgba(225, 29, 46, 0.8));
+}
+
+.paylineArrowLeft {
+  left: 0;
+  border-left-color: #e11d2e;
+}
+
+.paylineArrowRight {
+  right: 0;
+  border-right-color: #e11d2e;
+}
+
+/* Amber LED readout */
+.led {
+  background: radial-gradient(ellipse at 50% 40%, #1a1206 0%, #050403 80%);
+  border: 3px solid #1f2937;
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.95), 0 0 0 3px #d99a1e;
+  color: #ffb020;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Courier New', monospace;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px rgba(255, 170, 0, 0.9), 0 0 2px #ffd27a;
+}
+
+.ledBlink {
+  animation: blink 700ms steps(1, end) infinite;
+}
+
+.dots::after {
+  content: '';
+  display: inline-block;
+  width: 1.6em;
+  text-align: left;
+  animation: dots 1.2s steps(4, end) infinite;
+}
+
+@keyframes dots {
+  0% { content: ''; }
+  25% { content: '.'; }
+  50% { content: '..'; }
+  75% { content: '...'; }
+}
+
+@keyframes blink {
+  0% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* Marquee bulbs */
+.lights {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.bulb {
+  position: absolute;
+  translate: -50% -50%;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #fff4c2 40%, #f7c948 100%);
+  box-shadow: 0 0 8px 2px rgba(255, 220, 120, 0.85);
+}
+
+.lights[data-mode='spin'] .bulbA { animation: bulb 420ms steps(1, end) infinite; }
+.lights[data-mode='spin'] .bulbB { animation: bulb 420ms steps(1, end) infinite; animation-delay: -210ms; }
+.lights[data-mode='fast'] .bulbA { animation: bulb 180ms steps(1, end) infinite; }
+.lights[data-mode='fast'] .bulbB { animation: bulb 180ms steps(1, end) infinite; animation-delay: -90ms; }
+.lights[data-mode='win'] .bulbA,
+.lights[data-mode='win'] .bulbB { animation: bulb 260ms steps(1, end) infinite; }
+
+@keyframes bulb {
+  0% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+/* Pull lever */
+.leverMount {
+  position: absolute;
+  left: 0;
+  background: linear-gradient(90deg, #64748b, #f1f5f9 45%, #94a3b8);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+.leverRod {
+  position: absolute;
+  transform-origin: 50% 100%;
+  background: linear-gradient(90deg, #475569, #f8fafc 45%, #94a3b8);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.leverKnob {
+  position: absolute;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 30%, #ff9a9a 0%, #e11d2e 45%, #7f0d17 100%);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.55), inset 0 -4px 8px rgba(0, 0, 0, 0.35);
+}
+
+.leverPull {
+  animation: lever-rod 950ms cubic-bezier(0.45, 0, 0.25, 1) both;
+}
+
+.leverKnobPull {
+  animation: lever-knob 950ms cubic-bezier(0.45, 0, 0.25, 1) both;
+}
+
+@keyframes lever-rod {
+  0% { transform: scaleY(1); }
+  45% { transform: scaleY(-0.8); }
+  100% { transform: scaleY(1); }
+}
+
+@keyframes lever-knob {
+  0% { transform: translateY(0); }
+  45% { transform: translateY(calc(var(--rod) * 1.8)); }
+  100% { transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anticipate,
+  .winAvatar,
+  .paylineWin,
+  .ledBlink { animation: none; }
+  .dots::after { animation: none; content: '...'; }
+}
