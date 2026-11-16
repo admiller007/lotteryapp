@@ -1,132 +1,119 @@
 "use client";
 import { useAppContext } from '@/context/AppContext';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Trophy, Gift, Calendar } from 'lucide-react';
-import Image from 'next/image';
 import { useState, useEffect, useRef } from 'react';
-import SlotMachine from '@/components/SlotMachine';
+import WinnerReveal, { PersonAvatar, type RevealPerson } from '@/components/WinnerReveal';
 
 const formatWinnerKey = (prizeId: string, winnerId: string) => `${prizeId}:${winnerId}`;
 
+interface QueuedWinner {
+  prizeId: string;
+  winnerId: string;
+}
+
+const REVEAL_AUTO_ADVANCE_MS = 10000;
+const HIGHLIGHT_MS = 8000;
+
 export default function WinnersPage() {
   const { state } = useAppContext();
-  const { prizes, winners, allUsers, isAuctionOpen } = state;
-  const [showSlotMachine, setShowSlotMachine] = useState(false);
-  const [currentWinner, setCurrentWinner] = useState<{
-    prizeId: string;
-    winnerId: string;
-    winnerName: string;
-    prizeName: string;
-    winnerProfilePicture?: string;
-  } | null>(null);
-  const [displayedWinners, setDisplayedWinners] = useState<Set<string>>(new Set());
-  const displayedWinnersRef = useRef<Set<string>>(displayedWinners);
-  const previousWinnersRef = useRef<Record<string, string[]>>({});
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [winnerQueue, setWinnerQueue] = useState<Array<{
-    prizeId: string;
-    winnerId: string;
-    winnerName: string;
-    prizeName: string;
-    winnerProfilePicture?: string;
-  }>>([]);
+  const { prizes, prizeTiers, winners, allUsers, isAuctionOpen, winnersSynced, drawStyle } = state;
 
-  // Create prize lookup map for O(1) access instead of O(n) .find()
-  const prizesMap = new Map(prizes.map(p => [p.id, p]));
+  const [queue, setQueue] = useState<QueuedWinner[]>([]);
+  const [current, setCurrent] = useState<QueuedWinner | null>(null);
+  const [highlightKey, setHighlightKey] = useState<string | null>(null);
+  // Winners that were already drawn when the page loaded (or that we've queued)
+  // so each one is only announced once. null until Firestore has synced.
+  const seenRef = useRef<Set<string> | null>(null);
 
-  // Get prizes that have winners
-  const prizesWithWinners = prizes.filter(prize => (winners[prize.id] || []).length > 0);
+  const toPerson = (userId: string): RevealPerson => {
+    const user = allUsers[userId];
+    return {
+      id: userId,
+      name: user?.name || 'Unknown',
+      profilePictureUrl: user?.profilePictureUrl,
+      facilityName: user?.facilityName,
+    };
+  };
 
-  // Get all winners
-  const allWinners = Object.entries(winners)
-    .flatMap(([prizeId, winnerIds]) => winnerIds.map((winnerId) => {
-      const prize = prizesMap.get(prizeId);
-      const winner = allUsers[winnerId];
-      return { prize, winner, winnerId };
-    }))
-    .filter(item => item.prize && item.winner);
+  const isStillWinner = (item: QueuedWinner) => (winners[item.prizeId] || []).includes(item.winnerId);
 
-  // Keep displayedWinnersRef in sync
+  // Queue winners that appear after the page has synced with Firestore.
   useEffect(() => {
-    displayedWinnersRef.current = displayedWinners;
-  }, [displayedWinners]);
+    if (!winnersSynced) return;
+    const keys = Object.entries(winners).flatMap(([prizeId, ids]) =>
+      ids.map((winnerId) => ({ prizeId, winnerId, key: formatWinnerKey(prizeId, winnerId) }))
+    );
 
-  // Watch for new winners and show slot machine
-  useEffect(() => {
-    const currentWinners = { ...winners };
-    const previousWinners = previousWinnersRef.current;
-
-    // Skip slot machine on initial load - mark existing winners as displayed
-    if (isInitialLoad && Object.keys(currentWinners).length > 0) {
-      const initialKeys = new Set<string>();
-      Object.entries(currentWinners).forEach(([prizeId, winnerIds]) => {
-        winnerIds.forEach((winnerId) => initialKeys.add(formatWinnerKey(prizeId, winnerId)));
-      });
-
-      setDisplayedWinners(initialKeys);
-      displayedWinnersRef.current = initialKeys;
-      previousWinnersRef.current = currentWinners;
-      setIsInitialLoad(false);
+    if (seenRef.current === null) {
+      // First sync: these were drawn before the page opened; don't replay them.
+      seenRef.current = new Set(keys.map((k) => k.key));
       return;
     }
 
-    // Find newly drawn winners (only after initial load)
-    if (!isInitialLoad) {
-      const newWinners: Array<{ prizeId: string; winnerId: string; winnerName: string; prizeName: string; winnerProfilePicture?: string }> = [];
-      for (const [prizeId, winnerIds] of Object.entries(currentWinners)) {
-        const previousIds = previousWinners[prizeId] || [];
-        winnerIds.forEach((winnerId) => {
-          const key = formatWinnerKey(prizeId, winnerId);
-          const isNewWinner = !previousIds.includes(winnerId) || !displayedWinnersRef.current.has(key);
-          if (isNewWinner) {
-            const prize = prizesMap.get(prizeId);
-            const winner = allUsers[winnerId];
+    const fresh = keys.filter((k) => !seenRef.current!.has(k.key));
+    if (fresh.length === 0) return;
+    fresh.forEach((k) => seenRef.current!.add(k.key));
+    setQueue((prev) => [...prev, ...fresh.map(({ prizeId, winnerId }) => ({ prizeId, winnerId }))]);
+  }, [winners, winnersSynced]);
 
-            if (prize && winner) {
-              newWinners.push({
-                prizeId,
-                winnerId,
-                winnerName: winner.name,
-                prizeName: prize.name,
-                winnerProfilePicture: winner.profilePictureUrl
-              });
-            }
-          }
-        });
-      }
-
-      // Add new winners to the queue
-      if (newWinners.length > 0) {
-        setWinnerQueue(prev => [...prev, ...newWinners]);
-      }
-    }
-
-    previousWinnersRef.current = currentWinners;
-  }, [winners, prizes, allUsers, isInitialLoad]);
-
-  // Process winner queue - show slot machines sequentially
+  // Announce queued winners one at a time, skipping any that were redrawn away.
   useEffect(() => {
-    if (winnerQueue.length > 0 && !showSlotMachine && !currentWinner) {
-      const nextWinner = winnerQueue[0];
-      setCurrentWinner(nextWinner);
-      setShowSlotMachine(true);
-      setWinnerQueue(prev => prev.slice(1)); // Remove from queue
+    if (current || queue.length === 0) return;
+    const [next, ...rest] = queue;
+    setQueue(rest);
+    if (isStillWinner(next) && prizes.some((p) => p.id === next.prizeId)) {
+      setCurrent(next);
     }
-  }, [winnerQueue, showSlotMachine, currentWinner]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queue, current]);
 
-  const handleSlotMachineComplete = () => {
-    setShowSlotMachine(false);
-    if (currentWinner) {
-      setDisplayedWinners(prev => new Set([...prev, formatWinnerKey(currentWinner.prizeId, currentWinner.winnerId)]));
-    }
-    setCurrentWinner(null);
+  useEffect(() => {
+    if (!highlightKey) return;
+    const timer = window.setTimeout(() => setHighlightKey(null), HIGHLIGHT_MS);
+    return () => window.clearTimeout(timer);
+  }, [highlightKey]);
+
+  const handleRevealComplete = () => {
+    if (current) setHighlightKey(formatWinnerKey(current.prizeId, current.winnerId));
+    setCurrent(null);
   };
 
-  // Show "lottery in progress" only if no winners have been drawn yet AND not showing slot machine (regardless of auction status)
-  if (allWinners.length === 0 && !showSlotMachine) {
+  const currentPrize = current ? prizes.find((p) => p.id === current.prizeId) : undefined;
+  const currentTier = currentPrize ? prizeTiers.find((t) => t.id === currentPrize.tierId) : undefined;
+  const pendingCount = queue.filter(isStillWinner).length;
+
+  const reveal = current && currentPrize && (
+    <WinnerReveal
+      key={formatWinnerKey(current.prizeId, current.winnerId)}
+      prize={{
+        name: currentPrize.name,
+        imageUrl: currentPrize.imageUrl,
+        tierName: currentTier?.name,
+        tierColor: currentTier?.color,
+      }}
+      candidates={Array.from(
+        new Set(currentPrize.entries.filter((e) => e.numTickets > 0).map((e) => e.userId))
+      ).map(toPerson)}
+      winner={toPerson(current.winnerId)}
+      drawStyle={drawStyle}
+      onComplete={handleRevealComplete}
+      autoAdvanceMs={REVEAL_AUTO_ADVANCE_MS}
+      remainingCount={pendingCount}
+    />
+  );
+
+  const prizesWithWinners = prizes.filter((prize) => (winners[prize.id] || []).some((id) => allUsers[id]));
+  const totalWinners = prizesWithWinners.reduce(
+    (sum, prize) => sum + (winners[prize.id] || []).filter((id) => allUsers[id]).length,
+    0
+  );
+
+  if (totalWinners === 0) {
     return (
       <div className="container mx-auto px-4 py-8">
+        {reveal}
         <div className="text-center space-y-6">
           <div className="flex justify-center">
             <div className="p-6 bg-primary/10 rounded-full">
@@ -136,7 +123,7 @@ export default function WinnersPage() {
           <div>
             <h1 className="text-4xl font-bold font-headline mb-4">Ready for Drawing</h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              The lottery setup is complete! Winners will be announced here as they are drawn.
+              Winners will be announced here as they are drawn. Keep this screen open!
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto mt-12">
@@ -162,145 +149,89 @@ export default function WinnersPage() {
     );
   }
 
-  // If showing slot machine, show it with a backdrop
-  if (showSlotMachine && currentWinner) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <SlotMachine
-            winnerName={currentWinner.winnerName}
-            prizeName={currentWinner.prizeName}
-            winnerProfilePicture={currentWinner.winnerProfilePicture}
-            allUsers={Object.entries(allUsers).map(([id, user]) => ({ id, name: user.name, profilePictureUrl: user.profilePictureUrl }))}
-            onComplete={handleSlotMachineComplete}
-            autoStart={true}
-          />
-        </div>
-        
-        {/* Show background content if there are already some winners */}
-        {allWinners.length > 0 && (
-          <div className="opacity-30 pointer-events-none">
-            <div className="text-center mb-12">
-              <div className="flex justify-center mb-6">
-                <div className="p-6 bg-accent/20 rounded-full">
-                  <Trophy className="h-16 w-16 text-accent" />
-                </div>
-              </div>
-              <h1 className="text-4xl font-bold font-headline mb-4">🎉 Congratulations to Our Winners! 🎉</h1>
-              <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-                {winnerQueue.length > 0
-                  ? `Announcing winners... ${winnerQueue.length + 1} more to go!`
-                  : "Drawing in progress... More winners being announced!"
-                }
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (allWinners.length === 0) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center space-y-6">
-          <div className="flex justify-center">
-            <div className="p-6 bg-muted rounded-full">
-              <Trophy className="h-16 w-16 text-muted-foreground" />
-            </div>
-          </div>
-          <div>
-            <h1 className="text-4xl font-bold font-headline mb-4">No Winners Yet</h1>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              The lottery has been closed, but no winners have been drawn yet. Check back soon!
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="text-center mb-12">
-        <div className="flex justify-center mb-6">
-          <div className="p-6 bg-accent/20 rounded-full">
-            <Trophy className="h-16 w-16 text-accent" />
+      {reveal}
+
+      <div className="text-center mb-10">
+        <div className="flex justify-center mb-5">
+          <div className="p-5 rounded-full bg-amber-100 dark:bg-amber-500/15">
+            <Trophy className="h-14 w-14 text-amber-500" />
           </div>
         </div>
-        <h1 className="text-4xl font-bold font-headline mb-4">🎉 Congratulations to Our Winners! 🎉</h1>
-        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          The lottery drawing is complete. Here are our lucky winners:
+        <h1 className="text-4xl sm:text-5xl font-bold font-headline mb-3">Congratulations to Our Winners!</h1>
+        <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto">
+          {pendingCount > 0 || current
+            ? 'Announcing winners now…'
+            : `${totalWinners} ${totalWinners === 1 ? 'winner' : 'winners'} across ${prizesWithWinners.length} ${prizesWithWinners.length === 1 ? 'prize' : 'prizes'}`}
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-        {allWinners.map(({ prize, winner, winnerId }) => (
-          <Card key={`${prize!.id}-${winnerId}`} className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 border-accent/20">
-            <CardHeader className="p-0 relative">
-              <Image
-                src={prize!.imageUrl || 'https://placehold.co/300x200.png'}
-                alt={prize!.name}
-                width={300}
-                height={200}
-                className="w-full h-auto object-contain"
-              />
-              <div className="absolute top-2 right-2 bg-accent text-accent-foreground p-2 rounded-md shadow-lg">
-                <Trophy className="h-6 w-6 inline-block mr-1" />
-                <span className="font-bold">Winner!</span>
-              </div>
-            </CardHeader>
-            <CardContent className="p-6">
-              <CardTitle className="text-xl font-headline mb-2">{prize!.name}</CardTitle>
-              <p className="text-sm text-muted-foreground mb-4">
-                {prize!.description}
-              </p>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between p-3 bg-accent/10 rounded-md">
-                  <span className="font-semibold text-accent">Winner:</span>
-                  <span className="font-bold">{winner!.name}</span>
-                </div>
-                {winner!.facilityName && (
-                  <div className="flex items-center justify-between p-3 bg-muted rounded-md">
-                    <span className="font-medium">Facility:</span>
-                    <span>{winner!.facilityName}</span>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+        {prizesWithWinners.map((prize) => {
+          const tier = prizeTiers.find((t) => t.id === prize.tierId);
+          const winnerIds = (winners[prize.id] || []).filter((id) => allUsers[id]);
+          const isHighlighted = winnerIds.some((id) => formatWinnerKey(prize.id, id) === highlightKey);
+          return (
+            <Card
+              key={prize.id}
+              className={`overflow-hidden flex flex-col transition-shadow duration-500 ${
+                isHighlighted ? 'ring-4 ring-amber-400 shadow-[0_0_40px_rgba(247,201,72,0.45)]' : 'shadow-md hover:shadow-lg'
+              }`}
+            >
+              <div className="relative aspect-[4/3] bg-muted">
+                {prize.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={prize.imageUrl} alt={prize.name} className="absolute inset-0 h-full w-full object-contain p-4" />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Gift className="h-16 w-16 text-muted-foreground/50" />
                   </div>
                 )}
-                <div className="flex items-center justify-between p-3 bg-muted rounded-md">
-                  <span className="font-medium">Total Entries:</span>
-                  <Badge variant="secondary">{prize!.totalTicketsInPrize} tickets</Badge>
+                {tier && (
+                  <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-background/90 px-2.5 py-1 text-xs font-semibold shadow">
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: tier.color }} />
+                    {tier.name}
+                  </span>
+                )}
+              </div>
+              <CardContent className="flex flex-1 flex-col gap-4 p-5">
+                <div>
+                  <h2 className="text-xl font-bold font-headline leading-tight">{prize.name}</h2>
+                  {prize.description && (
+                    <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{prize.description}</p>
+                  )}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                <ul className="mt-auto space-y-2">
+                  {winnerIds.map((winnerId) => {
+                    const person = toPerson(winnerId);
+                    const isNew = formatWinnerKey(prize.id, winnerId) === highlightKey;
+                    return (
+                      <li
+                        key={winnerId}
+                        className={`flex items-center gap-3 rounded-xl p-2.5 ${isNew ? 'bg-amber-100 dark:bg-amber-500/15' : 'bg-muted/60'}`}
+                      >
+                        <PersonAvatar person={person} size={48} className="ring-2 ring-amber-400" />
+                        <div className="min-w-0">
+                          <p className="font-bold leading-tight truncate">{person.name}</p>
+                          {person.facilityName && (
+                            <p className="text-sm text-muted-foreground truncate">{person.facilityName}</p>
+                          )}
+                        </div>
+                        <Trophy className="ml-auto h-5 w-5 shrink-0 text-amber-500" aria-label="Winner" />
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="text-xs text-muted-foreground">{prize.totalTicketsInPrize} tickets entered</p>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
-      <div className="text-center">
-        <Card className="max-w-2xl mx-auto">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-center gap-2">
-              <Trophy className="h-6 w-6 text-accent" />
-              Lottery Summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="text-center">
-                <p className="text-2xl font-bold text-primary">{prizes.length}</p>
-                <p className="text-sm text-muted-foreground">Total Prizes</p>
-              </div>
-              <div className="text-center">
-                <p className="text-2xl font-bold text-accent">{allWinners.length}</p>
-                <p className="text-sm text-muted-foreground">Winners Drawn</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="text-center mt-8 text-muted-foreground">
-        <p>Thank you to all participants! 🎊</p>
+      <div className="text-center text-muted-foreground">
+        <p>Thank you to everyone who took part!</p>
       </div>
     </div>
   );

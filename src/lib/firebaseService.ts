@@ -325,6 +325,15 @@ export const setAllocationsOpen = async (open: boolean): Promise<void> => {
   );
 };
 
+// Which animation the winner draw uses ('slot' or 'wheel'), for every screen.
+export const setDrawStyle = async (drawStyle: 'slot' | 'wheel'): Promise<void> => {
+  await setDoc(
+    doc(db, ...LOTTERY_SETTINGS_PATH),
+    { drawStyle, updatedAt: Timestamp.now() },
+    { merge: true }
+  );
+};
+
 // Ticket Allocation Management
 export const allocateTickets = async (
   allocation: Omit<FirebaseAllocation, 'id'>

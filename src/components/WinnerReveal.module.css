@@ -1,0 +1,169 @@
+/* Full-screen "stage" used for the draw and the winner reveal. It keeps its own
+   dark palette in both light and dark themes so it reads well on a projector. */
+.stage {
+  --gold: #f7c948;
+  --gold-soft: #ffe08a;
+  --coral: #ff6b6b;
+  --ink: #0b0f1f;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 40%, rgba(88, 63, 181, 0.55) 0%, rgba(11, 15, 31, 0) 70%),
+    radial-gradient(ellipse 60% 50% at 50% 110%, rgba(255, 107, 107, 0.28) 0%, rgba(11, 15, 31, 0) 70%),
+    var(--ink);
+  color: #fff;
+  animation: stage-in 280ms ease-out both;
+}
+
+@keyframes stage-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---------- Status text ---------- */
+
+.dots::after {
+  content: '';
+  display: inline-block;
+  width: 1.5em;
+  text-align: left;
+  animation: dots 1.2s steps(4, end) infinite;
+}
+
+@keyframes dots {
+  0% { content: ''; }
+  25% { content: '.'; }
+  50% { content: '..'; }
+  75% { content: '...'; }
+}
+
+/* ---------- Reveal ---------- */
+
+.rays {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 160vmax;
+  height: 160vmax;
+  translate: -50% -50%;
+  background: repeating-conic-gradient(
+    from 0deg,
+    rgba(247, 201, 72, 0.13) 0deg 8deg,
+    rgba(247, 201, 72, 0) 8deg 20deg
+  );
+  -webkit-mask-image: radial-gradient(circle, #000 0%, transparent 55%);
+  mask-image: radial-gradient(circle, #000 0%, transparent 55%);
+  animation: rays-spin 40s linear infinite, fade-in 900ms ease-out both;
+  pointer-events: none;
+}
+
+@keyframes rays-spin {
+  to { rotate: 360deg; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.portraitRing {
+  padding: 6px;
+  border-radius: 9999px;
+  background: conic-gradient(from 210deg, var(--gold-soft), var(--gold), #c98a1b, var(--gold-soft));
+  box-shadow: 0 0 80px rgba(247, 201, 72, 0.55), 0 20px 50px rgba(0, 0, 0, 0.5);
+  animation: pop-in 700ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes pop-in {
+  0% { opacity: 0; scale: 0.3; }
+  100% { opacity: 1; scale: 1; }
+}
+
+.riseIn {
+  animation: rise-in 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes rise-in {
+  from { opacity: 0; translate: 0 24px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+.winnerName {
+  font-size: clamp(2.5rem, min(8.5vw, 13vh), 10rem);
+  line-height: 1.02;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(180deg, #fff 30%, var(--gold-soft) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 40px rgba(247, 201, 72, 0.25);
+}
+
+.countdown {
+  transform-origin: left center;
+  animation-name: countdown;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+@keyframes countdown {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rays { animation: fade-in 300ms ease-out both; }
+  .portraitRing,
+  .riseIn,
+  .readoutPop { animation-duration: 1ms; }
+  .dots::after { animation: none; content: '...'; }
+}
+
+/* ---------- Prize wheel ---------- */
+
+.readoutPop {
+  animation: readout-pop 220ms ease-out both;
+}
+
+@keyframes readout-pop {
+  from { opacity: 0.4; translate: 0 0.15em; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+.hub {
+  background: radial-gradient(circle at 35% 30%, #fff6d0 0%, #f7c948 35%, #b7791f 75%, #7a4d00 100%);
+  box-shadow: 0 0 0 4px #5c3d00, 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 -6px 14px rgba(0, 0, 0, 0.35);
+}
+
+.bulbA,
+.bulbB {
+  fill: #fff4c2;
+  filter: drop-shadow(0 0 6px rgba(255, 230, 140, 0.95));
+}
+
+.rim[data-mode='spin'] .bulbA { animation: bulb 360ms steps(1, end) infinite; }
+.rim[data-mode='spin'] .bulbB { animation: bulb 360ms steps(1, end) infinite; animation-delay: -180ms; }
+.rim[data-mode='slow'] .bulbA { animation: bulb 900ms steps(1, end) infinite; }
+.rim[data-mode='slow'] .bulbB { animation: bulb 900ms steps(1, end) infinite; animation-delay: -450ms; }
+.rim[data-mode='win'] .bulbA,
+.rim[data-mode='win'] .bulbB { animation: bulb 240ms steps(1, end) infinite; }
+
+@keyframes bulb {
+  0% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.sliceGlow {
+  filter: drop-shadow(0 0 18px rgba(255, 224, 138, 0.95));
+  animation: slice-glow 700ms ease-in-out infinite alternate;
+}
+
+@keyframes slice-glow {
+  from { stroke-opacity: 0.55; }
+  to { stroke-opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rim[data-mode] .bulbA,
+  .rim[data-mode] .bulbB,
+  .sliceGlow { animation: none; }
+}

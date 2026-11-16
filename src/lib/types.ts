@@ -40,6 +40,9 @@ export interface PrizeConflict {
   newPrizeId: string;
 }
 
+// Which animation the winner draw uses (admin setting, shared via Firestore).
+export type DrawStyle = 'slot' | 'wheel';
+
 export interface AuctionContextState {
   prizes: Prize[];
   prizeTiers: PrizeTier[];
@@ -47,7 +50,10 @@ export interface AuctionContextState {
   isAuctionOpen: boolean;
   // Admin switch stored in Firestore (settings/lottery); when false nobody can change tickets.
   allocationsOpen: boolean;
+  drawStyle: DrawStyle;
   winners: Record<string, string[]>;
+  // True once the first winners snapshot has arrived from Firestore.
+  winnersSynced?: boolean;
   allUsers: Record<string, { id: string; name: string; tickets?: number; facilityName?: string; pin?: string; profilePictureUrl?: string; status?: 'inactive' | 'working' | 'at_party' }>;
   pendingConflict: PrizeConflict | null;
   drawsPaused: boolean;
@@ -71,6 +77,7 @@ export type AuctionAction =
   | { type: 'DRAW_TIER_WINNERS'; payload: { tierId: string } }
   | { type: 'RESET_AUCTION' }
   | { type: 'SET_ALLOCATIONS_OPEN'; payload: { open: boolean } }
+  | { type: 'SET_DRAW_STYLE'; payload: { drawStyle: DrawStyle } }
   | { type: 'REDRAW_PRIZE_WINNER'; payload: { prizeId: string; winnerId?: string } }
   | { type: 'LOGIN_USER'; payload: { firstName: string; lastName: string; facilityName: string; pin: string } }
   | { type: 'LOGIN_SUCCESS'; payload: { user: AppUser; userName: string } }
