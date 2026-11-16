@@ -7,15 +7,20 @@
  *   npm run dry-run -- status     show test prizes, their entries and winners
  *   npm run dry-run -- clean      delete all test users, prizes, allocations and winners
  *
- * Reads the Firebase config from .env.local (same NEXT_PUBLIC_FIREBASE_* vars
- * as the app). Allocations go through the app's real allocateTickets()
- * transaction, all users at once, so `allocate` also exercises concurrency.
+ * Uses the Firebase Admin SDK with FIREBASE_SERVICE_ACCOUNT_KEY from
+ * .env.local (or the emulators when FIRESTORE_EMULATOR_HOST is set).
+ * Allocations go through the same server transaction as the /api/allocations
+ * route, all users at once, so `allocate` also exercises concurrency.
  *
  * Test users can log in on the site with:
  *   First name "Test", last name "User 01" … "User 10", facility "Test Facility", PIN 1111
  */
 import { config } from 'dotenv';
-import * as firestore from 'firebase/firestore';
+import { Timestamp, type DocumentReference } from 'firebase-admin/firestore';
+import { getAdminDb } from '../src/lib/server/firebaseAdmin';
+import { createUsers, USER_SECRETS, USERS } from '../src/lib/server/users';
+import { setAllocation } from '../src/lib/server/allocations';
+
 config({ path: '.env.local' });
 
 const TEST_EMPLOYEE_PREFIX = 'TEST-';
@@ -31,28 +36,29 @@ const TEST_PRIZES = [
   { name: `${TEST_PRIZE_PREFIX} C - Standard`, description: 'Dry-run prize (safe to delete)', numberOfWinners: 1 },
 ];
 
+interface Entry { userId: string; numTickets: number }
+
 async function main() {
   const command = process.argv[2];
-  // Import the app's Firebase modules after dotenv so the config sees the env vars.
-  // (firebase/firestore itself is imported statically above: a dynamic import
-  // would load a second copy of the SDK that rejects the app's db instance.)
-  const { db } = await import('../src/lib/firebase/index');
-  const svc = await import('../src/lib/firebaseService');
-  const { collection, getDocs, writeBatch, query, where } = firestore;
-
-  const isTestUser = (u: { employeeId?: string }) => !!u.employeeId?.startsWith(TEST_EMPLOYEE_PREFIX);
-  const isTestPrize = (p: { name?: string }) => !!p.name?.startsWith(TEST_PRIZE_PREFIX);
+  const db = getAdminDb();
 
   const loadTestData = async () => {
-    const [users, prizes] = await Promise.all([svc.getUsers(), svc.getPrizes()]);
-    return { users: users.filter(isTestUser), prizes: prizes.filter(isTestPrize), allPrizes: prizes };
+    const [usersSnap, prizesSnap] = await Promise.all([db.collection(USERS).get(), db.collection('prizes').get()]);
+    const users = usersSnap.docs
+      .filter((d) => String(d.data().employeeId || '').startsWith(TEST_EMPLOYEE_PREFIX))
+      .map((d) => ({ id: d.id, ...(d.data() as { firstName: string; lastName: string; employeeId: string; tickets: number }) }));
+    const allPrizes = prizesSnap.docs.map((d) => ({
+      id: d.id,
+      ...(d.data() as { name: string; entries?: Entry[]; totalTicketsInPrize?: number; numberOfWinners?: number }),
+    }));
+    return { users, prizes: allPrizes.filter((p) => p.name?.startsWith(TEST_PRIZE_PREFIX)), allPrizes };
   };
 
   switch (command) {
     case 'seed': {
       const { users, prizes } = await loadTestData();
       if (users.length === 0) {
-        await svc.addUsers(Array.from({ length: USER_COUNT }, (_, i) => {
+        await createUsers(db, Array.from({ length: USER_COUNT }, (_, i) => {
           const n = String(i + 1).padStart(2, '0');
           return {
             firstName: 'Test',
@@ -70,7 +76,7 @@ async function main() {
       }
       if (prizes.length === 0) {
         for (const p of TEST_PRIZES) {
-          await svc.addPrize({ ...p, imageUrl: '', entries: [], totalTicketsInPrize: 0 });
+          await db.collection('prizes').add({ ...p, imageUrl: '', entries: [], totalTicketsInPrize: 0, createdAt: Timestamp.now() });
         }
         console.log(`Created ${TEST_PRIZES.length} test prizes.`);
       } else {
@@ -86,18 +92,15 @@ async function main() {
         console.log('No test users or prizes found. Run `npm run dry-run -- seed` first.');
         break;
       }
-      // Each user splits all their tickets randomly across the test prizes.
+      // Each user first clears their entries, then splits all their tickets
+      // randomly across the test prizes, all users at the same time.
+      await Promise.all(users.flatMap((user) =>
+        prizes.map((prize) => setAllocation(db, { userId: user.id, prizeId: prize.id, tickets: 0 }))
+      ));
       const jobs = users.flatMap((user) => {
         const split = new Array(prizes.length).fill(0);
         for (let t = 0; t < user.tickets; t++) split[Math.floor(Math.random() * prizes.length)]++;
-        return prizes.map((prize, i) => svc.allocateTickets({
-          lotteryId: 'default',
-          prizeId: prize.id!,
-          userId: user.employeeId,
-          userName: `${user.firstName} ${user.lastName}`,
-          tickets: split[i],
-          timestamp: new Date().toISOString(),
-        }));
+        return prizes.map((prize, i) => setAllocation(db, { userId: user.id, prizeId: prize.id, tickets: split[i] }));
       });
       await Promise.all(jobs);
       console.log(`Allocated tickets for ${users.length} test users across ${prizes.length} test prizes (${jobs.length} concurrent writes).`);
@@ -106,7 +109,7 @@ async function main() {
     // eslint-disable-next-line no-fallthrough
     case 'status': {
       const { users, prizes } = await loadTestData();
-      const winnersSnap = await getDocs(collection(db, 'winners'));
+      const winnersSnap = await db.collection('winners').get();
       const userName = (id: string) => {
         const u = users.find((x) => x.employeeId === id || x.id === id);
         return u ? `${u.firstName} ${u.lastName}` : id;
@@ -123,25 +126,28 @@ async function main() {
       const actual = prizes.reduce((s, p) => s + (p.totalTicketsInPrize || 0), 0);
       if (command === 'allocate') {
         console.log(`\nTicket check: ${actual} allocated of ${expected} expected ${actual === expected ? 'OK' : 'MISMATCH'}`);
+        if (actual !== expected) process.exitCode = 1;
       }
       break;
     }
 
     case 'clean': {
       const { users, prizes, allPrizes } = await loadTestData();
-      const testUserIds = new Set(users.flatMap((u) => [u.employeeId, u.id].filter(Boolean) as string[]));
-      const testPrizeIds = new Set(prizes.map((p) => p.id!));
-      const refs: firestore.DocumentReference[] = [];
+      const testUserIds = new Set(users.flatMap((u) => [u.employeeId, u.id].filter(Boolean)));
+      const testPrizeIds = new Set(prizes.map((p) => p.id));
+      const refs: DocumentReference[] = [];
 
-      users.forEach((u) => refs.push(firestore.doc(db, 'users', u.id!)));
-      prizes.forEach((p) => refs.push(firestore.doc(db, 'prizes', p.id!)));
+      users.forEach((u) => {
+        refs.push(db.collection(USERS).doc(u.id));
+        refs.push(db.collection(USER_SECRETS).doc(u.id));
+      });
+      prizes.forEach((p) => refs.push(db.collection('prizes').doc(p.id)));
 
-      const allocs = await getDocs(collection(db, 'allocations'));
+      const [allocs, winners] = await Promise.all([db.collection('allocations').get(), db.collection('winners').get()]);
       allocs.forEach((d) => {
         const a = d.data();
         if (testUserIds.has(a.userId) || testPrizeIds.has(a.prizeId)) refs.push(d.ref);
       });
-      const winners = await getDocs(collection(db, 'winners'));
       winners.forEach((d) => {
         const w = d.data();
         if (testUserIds.has(w.winnerId) || testPrizeIds.has(w.prizeId)) refs.push(d.ref);
@@ -149,23 +155,26 @@ async function main() {
 
       // Firestore batches are capped at 500 writes.
       for (let i = 0; i < refs.length; i += 450) {
-        const batch = writeBatch(db);
+        const batch = db.batch();
         refs.slice(i, i + 450).forEach((r) => batch.delete(r));
         await batch.commit();
       }
 
       // If someone logged in as a test user and allocated to a real prize, drop those entries.
       let realPrizesFixed = 0;
-      for (const p of allPrizes.filter((x) => !testPrizeIds.has(x.id!))) {
+      for (const p of allPrizes.filter((x) => !testPrizeIds.has(x.id))) {
         const kept = (p.entries || []).filter((e) => !testUserIds.has(e.userId));
         if (kept.length !== (p.entries || []).length) {
-          await svc.updatePrizeEntries(p.id!, kept);
+          await db.collection('prizes').doc(p.id).update({
+            entries: kept,
+            totalTicketsInPrize: kept.reduce((s, e) => s + e.numTickets, 0),
+          });
           realPrizesFixed++;
         }
       }
 
-      const leftover = await getDocs(query(collection(db, 'users'), where('facilityName', '==', TEST_FACILITY)));
-      console.log(`Deleted ${users.length} test users, ${prizes.length} test prizes, and ${refs.length - users.length - prizes.length} allocation/winner docs.`);
+      const leftover = await db.collection(USERS).where('facilityName', '==', TEST_FACILITY).get();
+      console.log(`Deleted ${users.length} test users, ${prizes.length} test prizes, and ${refs.length - users.length * 2 - prizes.length} allocation/winner docs.`);
       if (realPrizesFixed) console.log(`Removed test-user entries from ${realPrizesFixed} real prize(s).`);
       if (!leftover.empty) console.log(`Note: ${leftover.size} user(s) with facility "${TEST_FACILITY}" remain (not TEST- employee IDs, left untouched).`);
       break;

@@ -7,22 +7,23 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle, LogOut } from 'lucide-react';
 
 export default function InactivePage() {
-  const { state, dispatch } = useAppContext();
+  const { state, logout, isHydrated } = useAppContext();
   const router = useRouter();
 
-  const handleLogout = () => {
-    dispatch({ type: 'LOGOUT_USER' });
+  const handleLogout = async () => {
+    await logout();
     router.push('/login');
   };
 
   // Redirect to home if user is not inactive
   React.useEffect(() => {
+    if (!isHydrated) return;
     if (!state.currentUser) {
       router.push('/login');
     } else if (state.currentUser.status !== 'inactive') {
       router.push('/');
     }
-  }, [state.currentUser, router]);
+  }, [state.currentUser, isHydrated, router]);
 
   if (!state.currentUser || state.currentUser.status !== 'inactive') {
     return null; // Prevent flash of content before redirect

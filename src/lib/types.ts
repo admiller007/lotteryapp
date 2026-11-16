@@ -20,7 +20,7 @@ export interface Prize {
 }
 
 export interface AppUser {
-  id: string; // Will use employeeId
+  id: string; // Firestore users doc ID (also the Firebase Auth uid)
   firstName: string;
   lastName: string;
   employeeId: string;
@@ -30,6 +30,19 @@ export interface AppUser {
   allocatedTickets: Record<string, number>; // prizeId -> count
   status?: 'inactive' | 'working' | 'at_party';
   profilePictureUrl?: string; // Optional profile picture URL
+  // From the `admin` claim on the Firebase sign-in token. Only controls what
+  // the UI shows; Firestore rules and the API routes enforce it.
+  isAdmin?: boolean;
+}
+
+// Public info about another user (no PIN), keyed by user ID in allUsers.
+export interface DirectoryUser {
+  id: string;
+  name: string;
+  tickets?: number;
+  facilityName?: string;
+  profilePictureUrl?: string;
+  status?: 'inactive' | 'working' | 'at_party';
 }
 
 export interface PrizeConflict {
@@ -54,7 +67,7 @@ export interface AuctionContextState {
   winners: Record<string, string[]>;
   // True once the first winners snapshot has arrived from Firestore.
   winnersSynced?: boolean;
-  allUsers: Record<string, { id: string; name: string; tickets?: number; facilityName?: string; pin?: string; profilePictureUrl?: string; status?: 'inactive' | 'working' | 'at_party' }>;
+  allUsers: Record<string, DirectoryUser>;
   pendingConflict: PrizeConflict | null;
   drawsPaused: boolean;
   lastAction?: {
@@ -79,12 +92,9 @@ export type AuctionAction =
   | { type: 'SET_ALLOCATIONS_OPEN'; payload: { open: boolean } }
   | { type: 'SET_DRAW_STYLE'; payload: { drawStyle: DrawStyle } }
   | { type: 'REDRAW_PRIZE_WINNER'; payload: { prizeId: string; winnerId?: string } }
-  | { type: 'LOGIN_USER'; payload: { firstName: string; lastName: string; facilityName: string; pin: string } }
   | { type: 'LOGIN_SUCCESS'; payload: { user: AppUser; userName: string } }
   | { type: 'LOGIN_ERROR'; payload: { message: string } }
-  | { type: 'LOGIN_PENDING' }
   | { type: 'LOGOUT_USER' }
-  | { type: 'ADD_FIREBASE_USER'; payload: { firstName: string; lastName: string; facilityName: string; tickets: number; pin: string } }
   | { type: 'SET_FIREBASE_PRIZES'; payload: Prize[] }
   | { type: 'SET_FIREBASE_PRIZE_TIERS'; payload: PrizeTier[] }
   | { type: 'ADD_PRIZE_TIER'; payload: Omit<PrizeTier, 'id'> }
@@ -92,8 +102,7 @@ export type AuctionAction =
   | { type: 'DELETE_PRIZE_TIER'; payload: { tierId: string } }
   | { type: 'SYNC_USER_ALLOCATIONS'; payload: { userId: string; allocatedTickets: Record<string, number> } }
   | { type: 'LOAD_USER_ALLOCATIONS'; payload: { userId: string; allocatedTickets: Record<string, number> } }
-  | { type: 'UPLOAD_USERS'; payload: Array<{ firstName: string; lastName: string; employeeId: string; facilityName: string; tickets: number; pin: string; status?: 'inactive' | 'working' | 'at_party' }> }
   | { type: 'UPDATE_PROFILE_PICTURE'; payload: { userId: string; profilePictureUrl: string } }
   | { type: 'SYNC_WINNERS_FROM_FIREBASE'; payload: Record<string, string[]> }
-  | { type: 'UPSERT_ALL_USERS'; payload: Record<string, { id: string; name: string; tickets?: number; facilityName?: string; pin?: string; profilePictureUrl?: string; status?: 'inactive' | 'working' | 'at_party' }> }
+  | { type: 'UPSERT_ALL_USERS'; payload: Record<string, DirectoryUser> }
   | { type: 'RESOLVE_WINNER_CONFLICT'; payload: { conflictId: string; keepPrizeId: string; dropPrizeId: string; userId: string } };

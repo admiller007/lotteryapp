@@ -12,7 +12,7 @@ import { LogIn, Eye, EyeOff } from 'lucide-react';
 import { PARTY_CHECKIN_FLAG_KEY, PARTY_CHECKIN_QUERY_KEY, PARTY_CHECKIN_QUERY_VALUE } from '@/lib/partyCheckIn';
 
 export default function LoginPage() {
-  const { state } = useAppContext();
+  const { state, isAdmin } = useAppContext();
   const { loginWithFirebase } = useFirebaseLogin();
   const router = useRouter();
   const [firstName, setFirstName] = useState('');
@@ -42,7 +42,7 @@ export default function LoginPage() {
       return;
     }
     setIsLoading(true);
-    await loginWithFirebase(firstName, lastName, facilityName, pin);
+    await loginWithFirebase(firstName.trim(), lastName.trim(), facilityName.trim(), pin);
   };
 
   // Handle login success/error
@@ -51,7 +51,6 @@ export default function LoginPage() {
       setIsLoading(false);
 
       // Check user status - if inactive, redirect to inactive page (except for admin users)
-      const isAdmin = state.currentUser?.employeeId && ['ADMIN001', 'DEV007'].includes(state.currentUser.employeeId);
       if (state.currentUser?.status === 'inactive' && !isAdmin) {
         router.push('/inactive');
         return;
@@ -71,7 +70,7 @@ export default function LoginPage() {
         variant: "destructive",
       });
     }
-  }, [state.lastAction, state.currentUser, router]);
+  }, [state.lastAction, state.currentUser, isAdmin, router]);
 
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-150px)]">
@@ -89,7 +88,7 @@ export default function LoginPage() {
               <Input
                 id="firstName"
                 value={firstName}
-                onChange={(e) => setFirstName(e.target.value.trim())}
+                onChange={(e) => setFirstName(e.target.value)}
                 required
                 placeholder="Enter your first name"
               />
@@ -99,7 +98,7 @@ export default function LoginPage() {
               <Input
                 id="lastName"
                 value={lastName}
-                onChange={(e) => setLastName(e.target.value.trim())}
+                onChange={(e) => setLastName(e.target.value)}
                 required
                 placeholder="Enter your last name"
               />
@@ -109,7 +108,7 @@ export default function LoginPage() {
               <Input
                 id="facilityName"
                 value={facilityName}
-                onChange={(e) => setFacilityName(e.target.value.trim())}
+                onChange={(e) => setFacilityName(e.target.value)}
                 required
                 placeholder="Enter your facility name"
               />

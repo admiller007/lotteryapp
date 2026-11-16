@@ -10,7 +10,7 @@ import { Camera, Upload, User, ArrowRight, RotateCcw } from 'lucide-react';
 import { uploadProfilePictureFromDataURL, uploadProfilePicture, updateUserProfilePicture } from '@/lib/firebaseService';
 
 export default function ProfilePicturePage() {
-  const { state, dispatch } = useAppContext();
+  const { state, dispatch, isHydrated } = useAppContext();
   const router = useRouter();
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -24,10 +24,10 @@ export default function ProfilePicturePage() {
 
   // Redirect if not logged in
   React.useEffect(() => {
-    if (state.currentUser === null) {
+    if (isHydrated && state.currentUser === null) {
       router.push('/login');
     }
-  }, [state.currentUser, router]);
+  }, [state.currentUser, isHydrated, router]);
 
   // Load existing profile picture when component mounts
   React.useEffect(() => {

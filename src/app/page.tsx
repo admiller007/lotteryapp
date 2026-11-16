@@ -9,7 +9,7 @@ import { getPrizes, convertFirebasePrizeToAppPrize, getPrizeTiers, convertFireba
 import { toast } from '@/hooks/use-toast';
 
 export default function HomePage() {
-  const { state, dispatch } = useAppContext();
+  const { state, dispatch, isAdmin, isHydrated } = useAppContext();
   const router = useRouter();
   const [loadingPrizes, setLoadingPrizes] = useState(false);
 
@@ -62,18 +62,15 @@ export default function HomePage() {
   }, [dispatch]);
 
   useEffect(() => {
-    if (state.currentUser === undefined) return; // Wait for context to initialize
+    if (!isHydrated) return; // Wait until we know whether someone is signed in
 
     if (!state.currentUser) {
       router.push('/login');
-    } else if (state.currentUser.status === 'inactive') {
+    } else if (state.currentUser.status === 'inactive' && !isAdmin) {
       // Redirect inactive users to the inactive page (except for admin users)
-      const isAdmin = state.currentUser.employeeId && ['ADMIN001', 'DEV007'].includes(state.currentUser.employeeId);
-      if (!isAdmin) {
-        router.push('/inactive');
-      }
+      router.push('/inactive');
     }
-  }, [state.currentUser, router]);
+  }, [state.currentUser, isAdmin, isHydrated, router]);
 
   if (state.currentUser === undefined || !state.currentUser) {
     // Show a loading state or skeleton while checking auth / redirecting

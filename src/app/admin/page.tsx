@@ -2,7 +2,7 @@
 "use client";
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAppContext } from '@/context/AppContext';
+import { useAppContext, toDirectory } from '@/context/AppContext';
 import type { Prize } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,11 +10,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { PlusCircle, Edit3, Trash2, Play, RefreshCcw, Award, ShieldAlert, Upload, Users, Gift, Layers, Ticket, Trophy, Camera, UserPlus, X, Bug, Download, FileText, FileSpreadsheet, BarChart3 } from 'lucide-react';
+import { PlusCircle, Edit3, Trash2, Play, RefreshCcw, Award, ShieldAlert, Upload, Users, Gift, Layers, Ticket, Trophy, Camera, UserPlus, X, Bug, Download, FileText, FileSpreadsheet, BarChart3, KeyRound } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { addUsers, getUsers, type FirebaseUser, addPrize, getPrizes, updatePrize, deletePrize, convertFirebasePrizeToAppPrize, type FirebasePrize, deleteUserAndCleanup, adminUploadUserProfilePicture, adminRemoveUserProfilePicture, debugWinnersAndUsers, addUser, updateUser, getWinnersForExport } from '@/lib/firebaseService';
+import { getUsers, type FirebaseUser, addPrize, getPrizes, updatePrize, deletePrize, convertFirebasePrizeToAppPrize, type FirebasePrize, adminUploadUserProfilePicture, adminRemoveUserProfilePicture, debugWinnersAndUsers, updateUser, getWinnersForExport } from '@/lib/firebaseService';
+import { createUsersApi, deleteUserApi, resetUserPinApi } from '@/lib/apiClient';
 import FirebasePrizeManager from '@/components/FirebasePrizeManager';
 import WinnerDrawing from '@/components/WinnerDrawing';
 import AnalyticsDashboard from '@/components/AnalyticsDashboard';
@@ -77,8 +78,11 @@ export default function AdminPage() {
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [exportingCSV, setExportingCSV] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
+  const [pinResetUser, setPinResetUser] = useState<FirebaseUser | null>(null);
+  const [newPin, setNewPin] = useState('');
+  const [resettingPin, setResettingPin] = useState(false);
 
-  const ADMIN_IDS = ['ADMIN001', 'DEV007'];
+  const isAdminAccount = (user: FirebaseUser) => user.role === 'admin';
 
   // Load Firebase users
   const loadFirebaseUsers = async () => {
@@ -86,6 +90,8 @@ export default function AdminPage() {
     try {
       const users = await getUsers();
       setFirebaseUsers(users.map(u => ({ ...u, status: u.status || 'inactive' })));
+      // Keep the draw and winners screens' name lookup current too.
+      dispatch({ type: 'UPSERT_ALL_USERS', payload: toDirectory(users) });
     } catch (error: any) {
       console.error('Error loading Firebase users:', error);
       toast({
@@ -152,7 +158,7 @@ export default function AdminPage() {
     }
     setCreatingUser(true);
     try {
-      await addUser({
+      await createUsersApi([{
         firstName: newUserForm.firstName.trim(),
         lastName: newUserForm.lastName.trim(),
         employeeId: newUserForm.employeeId.trim(),
@@ -160,7 +166,7 @@ export default function AdminPage() {
         tickets: ticketsNumber,
         pin: newUserForm.pin.trim(),
         status: newUserForm.status,
-      });
+      }]);
       await loadFirebaseUsers();
       toast({ title: "User Added", description: `${newUserForm.firstName} ${newUserForm.lastName} was created.` });
       resetNewUserForm();
@@ -208,7 +214,7 @@ export default function AdminPage() {
       await updateUser(user.id, payload);
       setUserEdits((prev) => {
         const updated = { ...prev };
-        delete updated[user.id];
+        delete updated[user.id!];
         return updated;
       });
       await loadFirebaseUsers();
@@ -227,7 +233,7 @@ export default function AdminPage() {
 
       // Filter out admin users from bulk update
       const usersToUpdate = firebaseUsers.filter(user =>
-        !ADMIN_IDS.includes(user.employeeId) && user.status !== 'inactive'
+        !isAdminAccount(user) && user.status !== 'inactive'
       );
 
       for (const user of usersToUpdate) {
@@ -262,7 +268,7 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    if (state.currentUser === undefined) return; // Context not yet initialized
+    if (!isHydrated) return; // Wait until we know whether someone is signed in
 
     if (!currentUser) {
       router.push('/login');
@@ -279,7 +285,7 @@ export default function AdminPage() {
       loadFirebaseUsers();
       loadFirebasePrizes();
     }
-  }, [currentUser, isAdmin, router, state.currentUser]);
+  }, [currentUser, isAdmin, isHydrated, router]);
 
   // Refresh Firebase prizes periodically to show latest allocations
   useEffect(() => {
@@ -417,7 +423,7 @@ export default function AdminPage() {
   const handleDeleteUser = async (userId: string) => {
     setDeleting(true);
     try {
-      await deleteUserAndCleanup(userId);
+      await deleteUserApi(userId);
       await loadFirebaseUsers();
       toast({ title: 'User Deleted', description: 'User and related data removed.' });
     } catch (err: any) {
@@ -426,6 +432,26 @@ export default function AdminPage() {
     } finally {
       setDeleting(false);
       setDeletingUserId(null);
+    }
+  };
+
+  const closePinReset = () => {
+    setPinResetUser(null);
+    setNewPin('');
+  };
+
+  const handleResetPin = async () => {
+    if (!pinResetUser?.id || !newPin.trim()) return;
+    setResettingPin(true);
+    try {
+      await resetUserPinApi(pinResetUser.id, newPin.trim());
+      toast({ title: 'PIN Reset', description: `${pinResetUser.firstName} ${pinResetUser.lastName} can now log in with the new PIN.` });
+      closePinReset();
+    } catch (err: any) {
+      console.error('Failed to reset PIN:', err);
+      toast({ title: 'PIN Reset Failed', description: err.message || 'Unable to reset PIN', variant: 'destructive' });
+    } finally {
+      setResettingPin(false);
     }
   };
 
@@ -747,17 +773,15 @@ export default function AdminPage() {
       const values = lines[i].split(delimiter).map(v => v.trim());
       if (values.length !== headers.length) continue;
       
-      const userName = `${values[headers.indexOf('firstname')] || ''} ${values[headers.indexOf('lastname')] || ''}`.trim();
       const facilityName = values[headers.indexOf('facilityname')] || '';
       const pin = values[headers.indexOf('pin')] || '';
-      
-      // Create deterministic user ID based on unique user info
-      const employeeId = `user_${userName.replace(/\s+/g, '_').toLowerCase()}_${facilityName.replace(/\s+/g, '_').toLowerCase()}_${pin}`;
-      
+      // Optional column; the server generates an ID when it's missing.
+      const employeeId = headers.includes('employeeid') ? values[headers.indexOf('employeeid')] || '' : '';
+
       const user = {
         firstName: values[headers.indexOf('firstname')] || '',
         lastName: values[headers.indexOf('lastname')] || '',
-        employeeId: employeeId,
+        employeeId,
         facilityName: facilityName,
         tickets: parseInt(values[headers.indexOf('tickets')] || '0'),
         pin: pin
@@ -780,18 +804,15 @@ export default function AdminPage() {
 
     setUploading(true);
     try {
-      const firebaseUsersPayload: Omit<FirebaseUser, 'id' | 'createdAt'>[] = previewUsers.map((user) => ({
+      await createUsersApi(previewUsers.map((user) => ({
         firstName: user.firstName,
         lastName: user.lastName,
-        employeeId: user.employeeId,
+        employeeId: user.employeeId || undefined,
         facilityName: user.facilityName,
         tickets: user.tickets,
         pin: user.pin,
-      }));
-
-      await addUsers(firebaseUsersPayload);
+      })));
       await loadFirebaseUsers();
-      dispatch({ type: 'UPLOAD_USERS', payload: previewUsers });
       toast({ title: "Users Uploaded", description: `Successfully uploaded ${previewUsers.length} users to Firebase.` });
 
       setCsvFile(null);
@@ -1126,10 +1147,10 @@ export default function AdminPage() {
                             {previewUsers.slice(0, 10).map((u, i) => (
                               <tr key={i} className="border-t">
                                 <td className="p-2">{u.firstName} {u.lastName}</td>
-                                <td className="p-2">{u.employeeId}</td>
+                                <td className="p-2">{u.employeeId || <span className="text-muted-foreground">auto</span>}</td>
                                 <td className="p-2">{u.facilityName}</td>
                                 <td className="p-2">{u.tickets}</td>
-                                <td className="p-2">{u.pin}</td>
+                                <td className="p-2">{'•'.repeat(Math.min(u.pin.length, 8))}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1195,6 +1216,7 @@ export default function AdminPage() {
                               <div className="flex items-center space-x-2">
                                 <span className="font-medium">{user.firstName} {user.lastName}</span>
                                 <span className="text-sm text-muted-foreground">({user.employeeId})</span>
+                                {isAdminAccount(user) && <Badge variant="secondary">Admin</Badge>}
                               </div>
                               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                 <span>{user.facilityName}</span>
@@ -1262,8 +1284,18 @@ export default function AdminPage() {
                             )}
                             <Button
                               size="sm"
+                              variant="outline"
+                              onClick={() => setPinResetUser(user)}
+                              disabled={!user.id}
+                              aria-label={`Reset PIN for ${user.firstName} ${user.lastName}`}
+                              title="Reset PIN"
+                            >
+                              <KeyRound className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
                               variant="destructive"
-                              disabled={!user.id || ADMIN_IDS.includes(user.employeeId)}
+                              disabled={!user.id || isAdminAccount(user)}
                               onClick={() => setDeletingUserId(user.id!)}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -1294,6 +1326,30 @@ export default function AdminPage() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+
+          <Dialog open={!!pinResetUser} onOpenChange={(open) => { if (!open) closePinReset(); }}>
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Reset PIN</DialogTitle>
+              </DialogHeader>
+              <form
+                onSubmit={(e) => { e.preventDefault(); handleResetPin(); }}
+                className="space-y-3"
+              >
+                <p className="text-sm text-muted-foreground">
+                  Set a new PIN for {pinResetUser?.firstName} {pinResetUser?.lastName}. This also unlocks the account after too many wrong PINs.
+                </p>
+                <div className="space-y-1">
+                  <Label htmlFor="new-pin">New PIN</Label>
+                  <Input id="new-pin" value={newPin} onChange={(e) => setNewPin(e.target.value)} autoComplete="off" required />
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={closePinReset} disabled={resettingPin}>Cancel</Button>
+                  <Button type="submit" disabled={!newPin.trim() || resettingPin}>{resettingPin ? 'Saving...' : 'Reset PIN'}</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
 
           {/* Profile Photo Management Dialog */}
           <Dialog open={profilePhotoDialogOpen} onOpenChange={closeProfilePhotoDialog}>

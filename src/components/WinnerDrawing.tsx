@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Trophy, Shuffle, Target, Users, Gift, Zap, UserCheck, Lock, LockOpen, Cherry, FerrisWheel, Play } from 'lucide-react';
-import { useAppContext, buildDrawingPool } from '@/context/AppContext';
+import { useAppContext, buildDrawingPool, toDirectory } from '@/context/AppContext';
 import { toast } from '@/hooks/use-toast';
 import WinnerReveal, { type RevealPerson } from '@/components/WinnerReveal';
 import type { DrawStyle, Prize } from '@/lib/types';
@@ -337,23 +337,13 @@ export default function WinnerDrawing() {
 
   const handleRandomlyAllocateTickets = async () => {
     // First try to load users from Firebase if local state is empty
-    if (Object.keys(state.allUsers).length <= 2) { // Only admin users
+    if (Object.keys(state.allUsers).length === 0) {
       try {
         const { getUsers } = await import('@/lib/firebaseService');
         const firebaseUsers = await getUsers();
         
         if (firebaseUsers.length > 0) {
-          dispatch({
-            type: 'UPLOAD_USERS',
-            payload: firebaseUsers.map(user => ({
-              firstName: user.firstName,
-              lastName: user.lastName,
-              employeeId: user.employeeId,
-              facilityName: user.facilityName,
-              tickets: user.tickets,
-              pin: user.pin
-            }))
-          });
+          dispatch({ type: 'UPSERT_ALL_USERS', payload: toDirectory(firebaseUsers) });
           
           toast({
             title: "Users Loaded",

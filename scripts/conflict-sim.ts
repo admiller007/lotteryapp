@@ -22,6 +22,7 @@ const adminUser = {
   totalInitialTickets: 100,
   allocatedTickets: {},
   status: 'working' as const,
+  isAdmin: true,
 };
 
 const basePrizes: Prize[] = [

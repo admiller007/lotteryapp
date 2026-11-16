@@ -11,8 +11,7 @@ import {
   writeBatch,
   Timestamp,
   getDoc,
-  setDoc,
-  runTransaction
+  setDoc
 } from 'firebase/firestore';
 import { 
   ref, 
@@ -30,9 +29,12 @@ export interface FirebaseUser {
   employeeId: string;
   facilityName: string;
   tickets: number;
-  pin: string;
   status?: 'inactive' | 'working' | 'at_party';
   profilePictureUrl?: string;
+  // 'admin' grants admin rights at the next login. PINs are not on this doc:
+  // they're hashed in the server-only userSecrets collection.
+  role?: 'admin';
+  loginKey?: string;
   createdAt?: Timestamp;
 }
 
@@ -132,43 +134,8 @@ export const deletePrize = async (id: string): Promise<void> => {
 };
 
 // User Management
-export const addUser = async (user: Omit<FirebaseUser, 'id' | 'createdAt'>): Promise<string> => {
-  try {
-    const docRef = await addDoc(collection(db, 'users'), {
-      ...user,
-      status: user.status || 'inactive',
-      createdAt: Timestamp.now()
-    });
-    return docRef.id;
-  } catch (error) {
-    console.error('Error adding user:', error);
-    throw error;
-  }
-};
-
-export const addUsers = async (users: Omit<FirebaseUser, 'id' | 'createdAt'>[]): Promise<string[]> => {
-  try {
-    const batch = writeBatch(db);
-    const userRefs: string[] = [];
-    
-    users.forEach(user => {
-      const docRef = doc(collection(db, 'users'));
-      batch.set(docRef, {
-        ...user,
-        status: user.status || 'inactive',
-        createdAt: Timestamp.now()
-      });
-      userRefs.push(docRef.id);
-    });
-    
-    await batch.commit();
-    return userRefs;
-  } catch (error) {
-    console.error('Error adding users:', error);
-    throw error;
-  }
-};
-
+// Creating users, resetting PINs and deleting users go through the admin API
+// routes (see src/lib/apiClient.ts) because they touch PINs.
 export const getUsers = async (): Promise<FirebaseUser[]> => {
   try {
     const querySnapshot = await getDocs(
@@ -190,41 +157,6 @@ export const updateUser = async (id: string, updates: Partial<FirebaseUser>): Pr
     await updateDoc(userRef, updates);
   } catch (error) {
     console.error('Error updating user:', error);
-    throw error;
-  }
-};
-
-// Delete a user and clean up related data (allocations, prize entries, winners)
-export const deleteUserAndCleanup = async (userId: string): Promise<void> => {
-  try {
-    // Collect all operations in a batch where possible
-    const batch = writeBatch(db);
-
-    // 1) Delete user doc
-    batch.delete(doc(db, 'users', userId));
-
-    // 2) Delete allocations for this user
-    const allocsQ = query(collection(db, 'allocations'), where('userId', '==', userId));
-    const allocsSnap = await getDocs(allocsQ);
-    allocsSnap.forEach((d) => batch.delete(d.ref));
-
-    // 3) Remove user from prize entries and recalc totals
-    const prizesSnap = await getDocs(collection(db, 'prizes'));
-    prizesSnap.forEach((pDoc) => {
-      const data = pDoc.data() as FirebasePrize;
-      const entries = (data.entries || []).filter((e) => e.userId !== userId);
-      const totalTicketsInPrize = entries.reduce((sum, e) => sum + e.numTickets, 0);
-      batch.update(pDoc.ref, { entries, totalTicketsInPrize });
-    });
-
-    // 4) Delete winners where this user is the winner
-    const winnersQ = query(collection(db, 'winners'), where('winnerId', '==', userId));
-    const winnersSnap = await getDocs(winnersQ);
-    winnersSnap.forEach((d) => batch.delete(d.ref));
-
-    await batch.commit();
-  } catch (error) {
-    console.error('Error deleting user and cleaning up:', error);
     throw error;
   }
 };
@@ -257,65 +189,8 @@ export const resetAuctionData = async (): Promise<void> => {
   }
 };
 
-export const getUserByCredentials = async (
-  firstName: string,
-  lastName: string,
-  facilityName: string,
-  pin: string
-): Promise<FirebaseUser | null> => {
-  try {
-    const normalize = (value: string) => value.trim().toLowerCase();
-
-    // PIN must match exactly, but make the other fields case-insensitive
-    const pinMatchQuery = query(collection(db, 'users'), where('pin', '==', pin));
-
-    // Firestore doesn't support case-insensitive queries, so we query by PIN and
-    // then filter the name/facility locally using normalized comparisons.
-    const querySnapshot = await getDocs(pinMatchQuery);
-
-    if (querySnapshot.empty) {
-      return null;
-    }
-
-    const normalizedFirstName = normalize(firstName);
-    const normalizedLastName = normalize(lastName);
-    const normalizedFacilityName = normalize(facilityName);
-
-    const userDoc = querySnapshot.docs.find((doc) => {
-      const data = doc.data() as FirebaseUser;
-      return (
-        data.firstName &&
-        data.lastName &&
-        data.facilityName &&
-        normalize(data.firstName) === normalizedFirstName &&
-        normalize(data.lastName) === normalizedLastName &&
-        normalize(data.facilityName) === normalizedFacilityName
-      );
-    });
-
-    if (!userDoc) {
-      return null;
-    }
-
-    return {
-      id: userDoc.id,
-      ...userDoc.data()
-    } as FirebaseUser;
-  } catch (error) {
-    console.error('Error getting user by credentials:', error);
-    throw error;
-  }
-};
-
 // Lottery-wide settings (single doc). A missing doc means allocations are open.
 export const LOTTERY_SETTINGS_PATH = ['settings', 'lottery'] as const;
-
-export class AllocationsClosedError extends Error {
-  constructor() {
-    super('Ticket allocation is closed');
-    this.name = 'AllocationsClosedError';
-  }
-}
 
 export const setAllocationsOpen = async (open: boolean): Promise<void> => {
   await setDoc(
@@ -334,78 +209,7 @@ export const setDrawStyle = async (drawStyle: 'slot' | 'wheel'): Promise<void> =
   );
 };
 
-// Ticket Allocation Management
-export const allocateTickets = async (
-  allocation: Omit<FirebaseAllocation, 'id'>
-): Promise<{ entries: Array<{ userId: string; numTickets: number }>; totalTicketsInPrize: number }> => {
-  try {
-    const prizeRef = doc(db, 'prizes', allocation.prizeId);
-    // One allocation doc per (lottery, prize, user) so concurrent writes for the
-    // same user/prize land on the same document instead of creating duplicates.
-    const allocationRef = doc(
-      db,
-      'allocations',
-      `${allocation.lotteryId}_${allocation.prizeId}_${allocation.userId}`
-    );
-
-    // Allocation docs written before deterministic IDs used random IDs. Find
-    // them so the transaction can remove them; otherwise getUserAllocations
-    // could read a stale legacy doc instead of the current one.
-    const legacySnapshot = await getDocs(query(
-      collection(db, 'allocations'),
-      where('lotteryId', '==', allocation.lotteryId),
-      where('prizeId', '==', allocation.prizeId),
-      where('userId', '==', allocation.userId)
-    ));
-    const legacyRefs = legacySnapshot.docs
-      .filter((d) => d.id !== allocationRef.id)
-      .map((d) => d.ref);
-
-    // Read-modify-write the prize's entries inside a transaction. Firestore
-    // retries the transaction if another user changed the prize in between, so
-    // simultaneous allocations to the same prize can no longer overwrite each
-    // other's entries.
-    return await runTransaction(db, async (transaction) => {
-      // Enforce the admin's "close allocation" switch here too, so a browser
-      // that hasn't received the change yet still can't write.
-      const settingsSnapshot = await transaction.get(doc(db, ...LOTTERY_SETTINGS_PATH));
-      if (settingsSnapshot.exists() && settingsSnapshot.data().allocationsOpen === false) {
-        throw new AllocationsClosedError();
-      }
-
-      const prizeSnapshot = await transaction.get(prizeRef);
-      if (!prizeSnapshot.exists()) {
-        throw new Error('Prize not found');
-      }
-
-      const prizeData = prizeSnapshot.data() as FirebasePrize;
-      const entriesWithoutUser = (prizeData.entries || []).filter(
-        (entry) => entry.userId !== allocation.userId
-      );
-      const entries = allocation.tickets > 0
-        ? [...entriesWithoutUser, { userId: allocation.userId, numTickets: allocation.tickets }]
-        : entriesWithoutUser;
-      const totalTicketsInPrize = entries.reduce((sum, entry) => sum + entry.numTickets, 0);
-
-      legacyRefs.forEach((ref) => transaction.delete(ref));
-      if (allocation.tickets > 0) {
-        transaction.set(allocationRef, {
-          ...allocation,
-          timestamp: new Date().toISOString()
-        });
-      } else {
-        transaction.delete(allocationRef);
-      }
-      transaction.update(prizeRef, { entries, totalTicketsInPrize });
-
-      return { entries, totalTicketsInPrize };
-    });
-  } catch (error) {
-    console.error('Error allocating tickets:', error);
-    throw error;
-  }
-};
-
+// Ticket allocation writes go through /api/allocations (allocateTicketsApi).
 export const getUserAllocations = async (userId: string): Promise<Record<string, number>> => {
   try {
     const q = query(
