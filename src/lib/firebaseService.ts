@@ -21,6 +21,7 @@ import {
 } from 'firebase/storage';
 import { db, storage } from './firebase';
 import type { Prize, PrizeTier } from './types';
+import { planWinnerSync, winnerDocId } from './winnerSync';
 
 export interface FirebaseUser {
   id?: string;
@@ -407,10 +408,11 @@ export const uploadProfilePictureFromDataURL = async (userId: string, dataURL: s
   }
 };
 
-// Save winner to Firebase
+// Save winner to Firebase. The doc ID comes from the (prize, winner) pair, so
+// saving the same winner twice can't create a duplicate.
 export const saveWinner = async (prizeId: string, winnerId: string): Promise<void> => {
   try {
-    await addDoc(collection(db, 'winners'), {
+    await setDoc(doc(db, 'winners', winnerDocId(prizeId, winnerId)), {
       prizeId,
       winnerId,
       timestamp: Timestamp.now()
@@ -421,30 +423,34 @@ export const saveWinner = async (prizeId: string, winnerId: string): Promise<voi
   }
 };
 
-// Save multiple winners to Firebase
+// Make the winners collection match `winners` (prizeId -> winner IDs).
+// Only the differences are written: winners who are unchanged keep their doc
+// and its original timestamp, and other screens' winners listeners see just
+// the change instead of every winner being deleted and re-added.
 export const saveWinners = async (winners: Record<string, string[]>): Promise<void> => {
   try {
-    const batch = writeBatch(db);
-    
-    // Clear existing winners first
     const existingWinners = await getDocs(collection(db, 'winners'));
-    existingWinners.forEach((doc) => {
-      batch.delete(doc.ref);
-    });
-    
-    // Add new winners
-    Object.entries(winners).forEach(([prizeId, winnerIds]) => {
-      winnerIds.forEach((winnerId) => {
-        const docRef = doc(collection(db, 'winners'));
-        batch.set(docRef, {
-          prizeId,
-          winnerId,
-          timestamp: Timestamp.now()
-        });
-      });
-    });
+    const { toDelete, toAdd } = planWinnerSync(
+      existingWinners.docs.map((d) => ({ id: d.id, ...(d.data() as { prizeId?: string; winnerId?: string }) })),
+      winners
+    );
 
-    await batch.commit();
+    type Op = (batch: ReturnType<typeof writeBatch>) => void;
+    const timestamp = Timestamp.now();
+    // Adds go first: if a later batch fails, a winner is never missing, and
+    // running the save again finishes the job.
+    const ops: Op[] = [
+      ...toAdd.map(({ id, prizeId, winnerId }): Op => (b) =>
+        b.set(doc(db, 'winners', id), { prizeId, winnerId, timestamp })),
+      ...toDelete.map((id): Op => (b) => b.delete(doc(db, 'winners', id))),
+    ];
+
+    // A Firestore batch holds at most 500 writes.
+    for (let i = 0; i < ops.length; i += 450) {
+      const batch = writeBatch(db);
+      ops.slice(i, i + 450).forEach((op) => op(batch));
+      await batch.commit();
+    }
   } catch (error) {
     console.error('Error saving winners to Firebase:', error);
     throw error;
