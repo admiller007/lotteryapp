@@ -147,7 +147,7 @@ export default function AdminPage() {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUserForm.firstName || !newUserForm.lastName || !newUserForm.employeeId || !newUserForm.facilityName || !newUserForm.pin) {
+    if (!newUserForm.firstName || !newUserForm.lastName || !newUserForm.facilityName || !newUserForm.pin) {
       toast({ title: "Missing fields", description: "Please fill in all required user fields.", variant: "destructive" });
       return;
     }
@@ -161,7 +161,6 @@ export default function AdminPage() {
       await createUsersApi([{
         firstName: newUserForm.firstName.trim(),
         lastName: newUserForm.lastName.trim(),
-        employeeId: newUserForm.employeeId.trim(),
         facilityName: newUserForm.facilityName.trim(),
         tickets: ticketsNumber,
         pin: newUserForm.pin.trim(),
@@ -566,13 +565,12 @@ export default function AdminPage() {
       }
 
       // Create CSV content
-      const headers = ['Prize Name', 'Prize Description', 'Winner First Name', 'Winner Last Name', 'Employee ID', 'Facility', 'Date/Time'];
+      const headers = ['Prize Name', 'Prize Description', 'Winner First Name', 'Winner Last Name', 'Facility', 'Date/Time'];
       const rows = winnersData.map(winner => [
         winner.prizeName,
         winner.prizeDescription,
         winner.winnerFirstName,
         winner.winnerLastName,
-        winner.winnerEmployeeId,
         winner.winnerFacility,
         format(winner.timestamp, 'yyyy-MM-dd HH:mm:ss')
       ]);
@@ -674,8 +672,6 @@ export default function AdminPage() {
         // Winner details
         doc.setFont('helvetica', 'normal');
         doc.text(`Winner: ${winner.winnerFirstName} ${winner.winnerLastName}`, margin + 5, yPosition);
-        yPosition += 5;
-        doc.text(`Employee ID: ${winner.winnerEmployeeId}`, margin + 5, yPosition);
         yPosition += 5;
         doc.text(`Facility: ${winner.winnerFacility}`, margin + 5, yPosition);
         yPosition += 5;
@@ -846,7 +842,6 @@ export default function AdminPage() {
     const fullName = `${u.firstName} ${u.lastName}`.toLowerCase();
     return (
       fullName.includes(q) ||
-      (u.employeeId || '').toLowerCase().includes(q) ||
       (u.facilityName || '').toLowerCase().includes(q)
     );
   });
@@ -1062,10 +1057,6 @@ export default function AdminPage() {
                     <Input id="facility-name" value={newUserForm.facilityName} onChange={(e) => handleNewUserChange('facilityName', e.target.value)} required />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="employee-id">Employee ID</Label>
-                    <Input id="employee-id" value={newUserForm.employeeId} onChange={(e) => handleNewUserChange('employeeId', e.target.value)} required />
-                  </div>
-                  <div className="space-y-1">
                     <Label htmlFor="tickets">Tickets</Label>
                     <Input id="tickets" type="number" min="0" value={newUserForm.tickets} onChange={(e) => handleNewUserChange('tickets', e.target.value)} />
                   </div>
@@ -1137,7 +1128,6 @@ export default function AdminPage() {
                           <thead className="bg-muted">
                             <tr>
                               <th className="text-left p-2">Name</th>
-                              <th className="text-left p-2">Employee ID</th>
                               <th className="text-left p-2">Facility</th>
                               <th className="text-left p-2">Tickets</th>
                               <th className="text-left p-2">PIN</th>
@@ -1147,7 +1137,6 @@ export default function AdminPage() {
                             {previewUsers.slice(0, 10).map((u, i) => (
                               <tr key={i} className="border-t">
                                 <td className="p-2">{u.firstName} {u.lastName}</td>
-                                <td className="p-2">{u.employeeId || <span className="text-muted-foreground">auto</span>}</td>
                                 <td className="p-2">{u.facilityName}</td>
                                 <td className="p-2">{u.tickets}</td>
                                 <td className="p-2">{'•'.repeat(Math.min(u.pin.length, 8))}</td>
@@ -1173,7 +1162,7 @@ export default function AdminPage() {
                   <h3 className="text-lg font-semibold">Firebase Users ({firebaseUsers.length})</h3>
                   <div className="flex gap-2 w-full sm:w-auto">
                     <Input
-                      placeholder="Search name, employee ID, facility"
+                      placeholder="Search name or facility"
                       value={userSearch}
                       onChange={(e) => setUserSearch(e.target.value)}
                       className="w-full sm:w-72"
@@ -1215,7 +1204,6 @@ export default function AdminPage() {
                             <div className="flex-1">
                               <div className="flex items-center space-x-2">
                                 <span className="font-medium">{user.firstName} {user.lastName}</span>
-                                <span className="text-sm text-muted-foreground">({user.employeeId})</span>
                                 {isAdminAccount(user) && <Badge variant="secondary">Admin</Badge>}
                               </div>
                               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
