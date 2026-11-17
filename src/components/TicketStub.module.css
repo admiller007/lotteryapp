@@ -185,9 +185,12 @@
 }
 
 @media (max-width: 640px) {
-  .barcode,
-  .serialWrap {
+  .main {
     display: none;
+  }
+  .tab {
+    border-left: none;
+    border-radius: 4px;
   }
 }
 

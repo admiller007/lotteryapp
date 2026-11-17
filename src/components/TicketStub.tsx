@@ -67,7 +67,7 @@ export default function TicketStub({ remaining, total, seed }: TicketStubProps) 
         <div className={styles.barcode} aria-hidden>
           {bars.map((w, i) => <span key={i} style={{ width: w }} />)}
         </div>
-        <div className={`${styles.meta} ${styles.serialWrap}`} aria-hidden>
+        <div className={styles.meta} aria-hidden>
           <span className={styles.label}>Admit one</span>
           <span className={styles.serial}>Nº {serial}</span>
         </div>
