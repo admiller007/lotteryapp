@@ -1,11 +1,12 @@
 
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAppContext } from '@/context/AppContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 import { MinusCircle, PlusCircle, Send } from 'lucide-react';
+import { launchTickets, TICKET_WALLET_ATTR } from './TicketStub';
 
 interface TicketAllocatorProps {
   prizeId: string;
@@ -19,6 +20,7 @@ export default function TicketAllocator({ prizeId }: TicketAllocatorProps) {
   const currentAllocation = currentUser ? currentUser.allocatedTickets[prizeId] || 0 : 0;
   const [numTickets, setNumTickets] = useState(currentAllocation);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
+  const allocateButtonRef = useRef<HTMLButtonElement>(null);
 
   // Only update from external sources if user hasn't interacted yet, or if the allocation actually changed
   useEffect(() => {
@@ -53,6 +55,13 @@ export default function TicketAllocator({ prizeId }: TicketAllocatorProps) {
       return;
     }
     
+    if (diff !== 0) {
+      const wallet = document.querySelector(`[${TICKET_WALLET_ATTR}]`);
+      const target = allocateButtonRef.current;
+      if (diff > 0) launchTickets(wallet, target, diff);
+      else launchTickets(target, wallet, -diff);
+    }
+
     dispatch({
       type: 'ALLOCATE_TICKETS',
       payload: { prizeId, userId: currentUser.id, userName: currentUser.name, count: numTickets },
@@ -129,7 +138,7 @@ export default function TicketAllocator({ prizeId }: TicketAllocatorProps) {
         <Button variant="outline" size="icon" onClick={handleIncrement} disabled={numTickets >= maxAffordable}>
           <PlusCircle className="h-4 w-4" />
         </Button>
-        <Button onClick={handleAllocate} className="flex-grow bg-accent hover:bg-accent/90 text-accent-foreground">
+        <Button ref={allocateButtonRef} onClick={handleAllocate} className="flex-grow bg-accent hover:bg-accent/90 text-accent-foreground">
           <Send className="h-4 w-4 mr-2"/> Allocate
         </Button>
       </div>

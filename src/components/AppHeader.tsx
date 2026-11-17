@@ -33,8 +33,8 @@ export default function AppHeader() {
   };
 
   return (
-    <header className="bg-primary text-primary-foreground shadow-md">
-      <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+    <header className="sticky top-0 z-40 px-3 pt-3 sm:px-4 sm:pt-4">
+      <div className="container mx-auto flex justify-between items-center gap-3 rounded-2xl border border-white/40 bg-primary/80 px-4 py-3 text-primary-foreground shadow-[0_10px_40px_-12px_hsl(4_70%_45%/0.55),inset_0_1px_0_hsl(0_0%_100%/0.35)] backdrop-blur-xl backdrop-saturate-150">
         <Link href="/" className="flex items-center gap-2">
           <img
             src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS_Co0r39JGCIAOeT0xsgpRoy92u2VljkLfaA&s"

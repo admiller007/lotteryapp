@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Trophy, Gift, Calendar } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import WinnerReveal, { PersonAvatar, type RevealPerson } from '@/components/WinnerReveal';
+import HoloCard, { HoloSeal } from '@/components/HoloCard';
 
 const formatWinnerKey = (prizeId: string, winnerId: string) => `${prizeId}:${winnerId}`;
 
@@ -173,9 +174,9 @@ export default function WinnersPage() {
           const winnerIds = (winners[prize.id] || []).filter((id) => allUsers[id]);
           const isHighlighted = winnerIds.some((id) => formatWinnerKey(prize.id, id) === highlightKey);
           return (
+            <HoloCard key={prize.id} className="h-full">
             <Card
-              key={prize.id}
-              className={`overflow-hidden flex flex-col transition-shadow duration-500 ${
+              className={`overflow-hidden flex flex-col h-full transition-shadow duration-500 ${
                 isHighlighted ? 'ring-4 ring-amber-400 shadow-[0_0_40px_rgba(247,201,72,0.45)]' : 'shadow-md hover:shadow-lg'
               }`}
             >
@@ -194,6 +195,7 @@ export default function WinnersPage() {
                     {tier.name}
                   </span>
                 )}
+                <HoloSeal className="absolute right-3 top-3" />
               </div>
               <CardContent className="flex flex-1 flex-col gap-4 p-5">
                 <div>
@@ -226,6 +228,7 @@ export default function WinnersPage() {
                 <p className="text-xs text-muted-foreground">{prize.totalTicketsInPrize} tickets entered</p>
               </CardContent>
             </Card>
+            </HoloCard>
           );
         })}
       </div>

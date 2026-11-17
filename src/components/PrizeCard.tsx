@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import TicketAllocator from './TicketAllocator';
 import { useAppContext } from '@/context/AppContext';
 import { Trophy } from 'lucide-react';
+import HoloCard, { HoloSeal } from './HoloCard';
 
 interface PrizeCardProps {
   prize: Prize;
@@ -51,7 +52,7 @@ export default function PrizeCard({ prize }: PrizeCardProps) {
   const useNextImage = isAllowedDomain(imageUrl);
 
 
-  return (
+  const card = (
     <Card className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300">
       <CardHeader className="p-0 relative">
         {useNextImage ? (
@@ -71,12 +72,7 @@ export default function PrizeCard({ prize }: PrizeCardProps) {
             data-ai-hint="prize item"
           />
         )}
-        {isCurrentUserWinner && (
-           <div className="absolute top-2 right-2 bg-success text-success-foreground p-2 rounded-md shadow-lg">
-             <Trophy className="h-6 w-6 inline-block mr-1" />
-             <span className="font-bold">You Won!</span>
-           </div>
-        )}
+        {isCurrentUserWinner && <HoloSeal label="You won" className="absolute top-3 right-3" />}
       </CardHeader>
       <CardContent className="p-4">
         <div className="flex items-center justify-between mb-2">
@@ -130,4 +126,6 @@ export default function PrizeCard({ prize }: PrizeCardProps) {
       </CardFooter>
     </Card>
   );
+
+  return isCurrentUserWinner ? <HoloCard>{card}</HoloCard> : card;
 }

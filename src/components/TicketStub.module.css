@@ -1,0 +1,204 @@
+/* Perforated ticket stub — inspired by "Graphic Ticket Rolls" (recent.design). */
+
+.stub {
+  --perf: 4px;          /* perforation hole radius */
+  --perf-gap: 11px;     /* distance between holes */
+  --paper: #fffaf2;
+  --ink: hsl(225 30% 16%);
+  --accent-ink: hsl(4 72% 56%);
+
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  height: 44px;
+  color: var(--ink);
+  filter: drop-shadow(0 6px 10px hsl(4 70% 30% / 0.28)) drop-shadow(0 1px 0 hsl(4 70% 30% / 0.2));
+  transform: rotate(-2deg);
+  transition: transform 300ms cubic-bezier(.2, .9, .3, 1.4);
+  user-select: none;
+}
+
+.stub:hover {
+  transform: rotate(0deg) translateY(-1px) scale(1.03);
+}
+
+/* Each half of the stub is a sheet of paper with stamp-style scalloped edges. */
+.main,
+.tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background:
+    linear-gradient(115deg, transparent 40%, hsl(0 0% 100% / 0.7) 50%, transparent 60%) no-repeat,
+    var(--paper);
+  background-size: 250% 100%, auto;
+  background-position: 150% 0, 0 0;
+  /* Scalloped top + bottom edges (stamp perforation) */
+  -webkit-mask:
+    radial-gradient(circle var(--perf) at 50% 0, #0000 98%, #000) 50% 0 / var(--perf-gap) 51% repeat-x,
+    radial-gradient(circle var(--perf) at 50% 100%, #0000 98%, #000) 50% 100% / var(--perf-gap) 51% repeat-x;
+  mask:
+    radial-gradient(circle var(--perf) at 50% 0, #0000 98%, #000) 50% 0 / var(--perf-gap) 51% repeat-x,
+    radial-gradient(circle var(--perf) at 50% 100%, #0000 98%, #000) 50% 100% / var(--perf-gap) 51% repeat-x;
+}
+
+.stub:hover .main,
+.stub:hover .tab {
+  animation: sheen 900ms ease-out;
+}
+
+@keyframes sheen {
+  from { background-position: 150% 0, 0 0; }
+  to   { background-position: -50% 0, 0 0; }
+}
+
+.main {
+  gap: 10px;
+  padding: 0 10px 0 12px;
+  border-radius: 4px 0 0 4px;
+}
+
+/* The tear line between main and tab */
+.tab {
+  padding: 0 10px 0 9px;
+  border-radius: 0 4px 4px 0;
+  border-left: 2px dashed hsl(225 30% 16% / 0.25);
+  background-color: #fff3df;
+}
+
+.barcode {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  height: 24px;
+}
+
+.barcode span {
+  background: var(--ink);
+  border-radius: 0.5px;
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+}
+
+.label {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.serial {
+  margin-top: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--accent-ink);
+}
+
+/* Odometer count */
+.count {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.digits {
+  display: inline-flex;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.digit {
+  position: relative;
+  display: inline-block;
+  height: 1em;
+  overflow: hidden;
+  width: 0.62em;
+}
+
+.digitStrip {
+  display: flex;
+  flex-direction: column;
+  transition: transform 700ms cubic-bezier(.2, .9, .25, 1.15);
+}
+
+.digitStrip span {
+  height: 1em;
+  line-height: 1;
+  text-align: center;
+}
+
+.total {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.5;
+}
+
+.bump {
+  animation: bump 500ms cubic-bezier(.2, .9, .3, 1.6);
+}
+
+@keyframes bump {
+  0%   { transform: rotate(-2deg) scale(1); }
+  35%  { transform: rotate(3deg) scale(1.12); }
+  100% { transform: rotate(-2deg) scale(1); }
+}
+
+/* Flying mini stub used by launchTickets() */
+.flyer {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 100;
+  width: 34px;
+  height: 20px;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(90deg, hsl(225 30% 16%) 0 1.5px, transparent 1.5px 3.5px) 6px 5px / 12px 10px no-repeat,
+    linear-gradient(90deg, #fffaf2 0 70%, #fff3df 70%);
+  -webkit-mask:
+    radial-gradient(circle 2.5px at 50% 0, #0000 98%, #000) 50% 0 / 7px 51% repeat-x,
+    radial-gradient(circle 2.5px at 50% 100%, #0000 98%, #000) 50% 100% / 7px 51% repeat-x;
+  mask:
+    radial-gradient(circle 2.5px at 50% 0, #0000 98%, #000) 50% 0 / 7px 51% repeat-x,
+    radial-gradient(circle 2.5px at 50% 100%, #0000 98%, #000) 50% 100% / 7px 51% repeat-x;
+  filter: drop-shadow(0 4px 6px hsl(4 70% 30% / 0.35));
+}
+
+.flyer::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  top: 6px;
+  width: 6px;
+  height: 8px;
+  border-radius: 1px;
+  background: hsl(4 72% 60%);
+}
+
+@media (max-width: 640px) {
+  .barcode,
+  .serialWrap {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stub,
+  .digitStrip {
+    transition: none;
+  }
+  .bump,
+  .stub:hover .main,
+  .stub:hover .tab {
+    animation: none;
+  }
+}

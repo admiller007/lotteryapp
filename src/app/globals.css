@@ -114,5 +114,58 @@
   }
   body {
     @apply bg-background text-foreground;
+    min-height: 100dvh;
+    isolation: isolate;
+  }
+}
+
+/* ------------------------------------------------------------------
+   Grain sky — curve-gradient backdrop with film grain + specks.
+   Inspired by colir.space: soft drifting color fields, never flat.
+   ------------------------------------------------------------------ */
+@layer base {
+  body::before,
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  /* Color fields + drifting specks */
+  body::before {
+    inset: -8vmax;
+    background:
+      radial-gradient(1.6px 1.6px at 13% 22%, hsl(225 35% 25% / 0.55), transparent 100%) 0 0 / 260px 260px,
+      radial-gradient(1.2px 1.2px at 67% 41%, hsl(225 35% 25% / 0.45), transparent 100%) 0 0 / 330px 330px,
+      radial-gradient(1.8px 1.8px at 39% 77%, hsl(0 0% 100% / 0.95), transparent 100%) 0 0 / 290px 290px,
+      radial-gradient(1.4px 1.4px at 84% 63%, hsl(0 0% 100% / 0.9), transparent 100%) 0 0 / 410px 410px,
+      radial-gradient(1px 1px at 25% 54%, hsl(268 60% 40% / 0.5), transparent 100%) 0 0 / 370px 370px,
+      radial-gradient(42% 38% at 14% 16%, hsl(4 95% 72% / 0.75), transparent 72%),
+      radial-gradient(38% 34% at 90% 10%, hsl(268 90% 78% / 0.75), transparent 72%),
+      radial-gradient(46% 42% at 82% 86%, hsl(30 100% 74% / 0.70), transparent 72%),
+      radial-gradient(36% 34% at 10% 90%, hsl(330 90% 80% / 0.65), transparent 72%),
+      radial-gradient(34% 30% at 55% 48%, hsl(195 95% 84% / 0.55), transparent 72%),
+      hsl(var(--background));
+    animation: grain-sky-drift 38s ease-in-out infinite alternate;
+  }
+
+  /* Film grain */
+  body::after {
+    opacity: 0.14;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 220px 220px;
+    mix-blend-mode: multiply;
+  }
+
+  @keyframes grain-sky-drift {
+    0%   { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
+    50%  { transform: translate3d(3vmax, -2vmax, 0) rotate(6deg) scale(1.05); }
+    100% { transform: translate3d(-2vmax, 2.5vmax, 0) rotate(-4deg) scale(1.02); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    body::before { animation: none; }
   }
 }
