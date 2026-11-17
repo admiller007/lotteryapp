@@ -1,0 +1,247 @@
+/* "Our Night, Recapped": a full-screen projector reel. Keeps its own dark
+   grain-sky palette in both themes so it reads well on a projector. */
+.stage {
+  --gold: #f7c948;
+  --gold-soft: #ffe08a;
+  --ink: #0b0f1f;
+  background: var(--ink);
+  color: #fff;
+  animation: fade-in 400ms ease-out both;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Drifting color fields, the dark twin of the body's grain sky. */
+.sky {
+  position: absolute;
+  inset: -10vmax;
+  pointer-events: none;
+  background:
+    radial-gradient(42% 38% at 14% 16%, hsl(4 95% 62% / 0.55), transparent 72%),
+    radial-gradient(38% 34% at 90% 10%, hsl(268 90% 62% / 0.6), transparent 72%),
+    radial-gradient(46% 42% at 82% 86%, hsl(30 100% 60% / 0.45), transparent 72%),
+    radial-gradient(36% 34% at 10% 90%, hsl(330 90% 62% / 0.5), transparent 72%),
+    radial-gradient(34% 30% at 55% 48%, hsl(195 95% 60% / 0.35), transparent 72%),
+    var(--ink);
+  animation: sky-drift 30s ease-in-out infinite alternate;
+}
+
+.grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.22;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 220px 220px;
+  mix-blend-mode: overlay;
+}
+
+@keyframes sky-drift {
+  0%   { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
+  50%  { transform: translate3d(3vmax, -2vmax, 0) rotate(8deg) scale(1.06); }
+  100% { transform: translate3d(-2vmax, 2.5vmax, 0) rotate(-5deg) scale(1.02); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---------- Story-style progress segments ---------- */
+
+.segment {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.22);
+  overflow: hidden;
+}
+
+.segmentFill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  background: #fff;
+}
+
+.segmentRunning {
+  animation: fill linear both;
+}
+
+@keyframes fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* Controls fade out when the pointer is idle so the projector stays clean. */
+.controls {
+  transition: opacity 500ms ease;
+}
+
+.controlsHidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------- Slide content ---------- */
+
+.slide {
+  animation: slide-in 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(2.5vh) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.rise {
+  animation: rise 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(3vh); }
+  to { opacity: 1; transform: none; }
+}
+
+.pop {
+  animation: pop 650ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes pop {
+  from { opacity: 0; transform: scale(0.6) rotate(-4deg); }
+  to { opacity: 1; transform: none; }
+}
+
+.kicker {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  color: var(--gold);
+  font-size: clamp(0.9rem, 1.6vw, 2rem);
+}
+
+.giant {
+  font-weight: 900;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  font-size: clamp(3rem, 10vw, 11rem);
+  background: linear-gradient(100deg, #fff 20%, var(--gold-soft) 45%, #ff9a8b 60%, #c4b5fd 80%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 6s ease-in-out infinite alternate;
+}
+
+@keyframes shimmer {
+  from { background-position: 0% 50%; }
+  to { background-position: 100% 50%; }
+}
+
+.headline {
+  font-weight: 800;
+  line-height: 1.05;
+  font-size: clamp(1.75rem, 4.2vw, 5rem);
+}
+
+.sub {
+  color: rgb(255 255 255 / 0.7);
+  font-size: clamp(1rem, 1.9vw, 2.25rem);
+}
+
+.statNumber {
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--gold);
+  font-size: clamp(2.75rem, 8vw, 9rem);
+}
+
+.statLabel {
+  margin-top: 0.6em;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: rgb(255 255 255 / 0.75);
+  font-size: clamp(0.8rem, 1.3vw, 1.6rem);
+}
+
+.glass {
+  border: 1px solid rgb(255 255 255 / 0.15);
+  background: rgb(255 255 255 / 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.prizePhoto {
+  border-radius: 1.5rem;
+  background: #fff;
+  object-fit: contain;
+  box-shadow: 0 30px 80px -20px rgb(0 0 0 / 0.6), 0 0 0 6px rgb(255 255 255 / 0.12);
+}
+
+.halo {
+  position: absolute;
+  inset: -12%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(247 201 72 / 0.45), transparent 65%);
+  animation: pulse 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+
+/* ---------- Facility bar race ---------- */
+
+.barTrack {
+  position: relative;
+  height: clamp(1.75rem, 4.2vh, 3.25rem);
+  border-radius: 0.6rem;
+  background: rgb(255 255 255 / 0.08);
+  overflow: hidden;
+}
+
+.bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 0.6rem;
+  transition: width 3200ms cubic-bezier(0.25, 0.9, 0.3, 1);
+}
+
+.barLabel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 0.8em;
+  font-weight: 700;
+  font-size: clamp(0.85rem, 1.5vw, 1.75rem);
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.6);
+}
+
+/* ---------- Every-winner montage ---------- */
+
+.montageCard {
+  animation: card-in 520ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(4vh) rotate(-3deg) scale(0.85); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sky,
+  .giant,
+  .halo { animation: none; }
+  .slide,
+  .rise,
+  .pop,
+  .montageCard { animation-duration: 1ms; }
+  .bar { transition-duration: 1ms; }
+}
