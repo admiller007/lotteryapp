@@ -9,6 +9,7 @@ import WinnerReveal, { PersonAvatar, type RevealPerson } from '@/components/Winn
 import HoloCard, { HoloSeal } from '@/components/HoloCard';
 import NightRecap from '@/components/NightRecap';
 import { allPrizesDrawn } from '@/lib/recapStats';
+import { buildRecapDemo } from '@/lib/recapDemo';
 
 const formatWinnerKey = (prizeId: string, winnerId: string) => `${prizeId}:${winnerId}`;
 
@@ -39,6 +40,8 @@ export default function WinnersPage() {
   // so each one is only announced once. null until Firestore has synced.
   const seenRef = useRef<Set<string> | null>(null);
   const [showRecap, setShowRecap] = useState(false);
+  // Admin preview of the reel with sample data, before any winners exist.
+  const [showDemoRecap, setShowDemoRecap] = useState(false);
   // Set once a winner has been announced on this screen, so the recap only
   // starts by itself after a live draw (not when the page is merely reopened).
   const announcedRef = useRef(false);
@@ -151,6 +154,7 @@ export default function WinnersPage() {
     return (
       <div className="container mx-auto px-4 py-8">
         {reveal}
+        {showDemoRecap && !current && <NightRecap {...buildRecapDemo()} onClose={() => setShowDemoRecap(false)} />}
         <div className="text-center space-y-6">
           <div className="flex justify-center">
             <div className="p-6 bg-primary/10 rounded-full">
@@ -181,6 +185,15 @@ export default function WinnersPage() {
               </CardContent>
             </Card>
           </div>
+          {isAdmin && (
+            <div className="flex flex-col items-center gap-2 pt-4">
+              <Button variant="outline" onClick={() => setShowDemoRecap(true)} disabled={!!current}>
+                <Clapperboard className="mr-2 h-4 w-4" />
+                Preview the night recap
+              </Button>
+              <p className="text-sm text-muted-foreground">Plays with sample data. The real recap is available once winners are drawn.</p>
+            </div>
+          )}
         </div>
       </div>
     );
