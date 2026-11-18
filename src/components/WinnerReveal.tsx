@@ -33,7 +33,7 @@ type Phase = 'drawing' | 'landed' | 'revealed';
 
 // How long to celebrate on the slot machine / wheel before the full reveal.
 const LANDED_HOLD_MS = 2400;
-const MUTE_KEY = 'winnerRevealMuted';
+export const MUTE_KEY = 'winnerRevealMuted';
 
 /* ---------------- Confetti ---------------- */
 
@@ -45,7 +45,7 @@ interface Particle {
 
 const CONFETTI_COLORS = ['#f7c948', '#ffe08a', '#ff6b6b', '#ffffff', '#5eead4', '#a78bfa', '#60a5fa'];
 
-function Confetti({ active }: { active: boolean }) {
+export function Confetti({ active }: { active: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {

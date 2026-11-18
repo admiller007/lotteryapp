@@ -2,10 +2,14 @@
 import { useAppContext } from '@/context/AppContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Gift, Calendar } from 'lucide-react';
+import { Trophy, Gift, Calendar, Clapperboard } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useState, useEffect, useRef } from 'react';
 import WinnerReveal, { PersonAvatar, type RevealPerson } from '@/components/WinnerReveal';
 import HoloCard, { HoloSeal } from '@/components/HoloCard';
+import NightRecap from '@/components/NightRecap';
+import { allPrizesDrawn } from '@/lib/recapStats';
+import { buildRecapDemo } from '@/lib/recapDemo';
 
 const formatWinnerKey = (prizeId: string, winnerId: string) => `${prizeId}:${winnerId}`;
 
@@ -16,9 +20,17 @@ interface QueuedWinner {
 
 const REVEAL_AUTO_ADVANCE_MS = 10000;
 const HIGHLIGHT_MS = 8000;
+// Pause between the last winner's reveal and the recap starting on its own.
+const RECAP_AUTO_START_MS = 4000;
+
+const winnersSignature = (winners: Record<string, string[]>) =>
+  Object.keys(winners)
+    .sort()
+    .map((prizeId) => `${prizeId}=${[...winners[prizeId]].sort().join(',')}`)
+    .join(';');
 
 export default function WinnersPage() {
-  const { state } = useAppContext();
+  const { state, isAdmin } = useAppContext();
   const { prizes, prizeTiers, winners, allUsers, isAuctionOpen, winnersSynced, drawStyle } = state;
 
   const [queue, setQueue] = useState<QueuedWinner[]>([]);
@@ -27,6 +39,14 @@ export default function WinnersPage() {
   // Winners that were already drawn when the page loaded (or that we've queued)
   // so each one is only announced once. null until Firestore has synced.
   const seenRef = useRef<Set<string> | null>(null);
+  const [showRecap, setShowRecap] = useState(false);
+  // Admin preview of the reel with sample data, before any winners exist.
+  const [showDemoRecap, setShowDemoRecap] = useState(false);
+  // Set once a winner has been announced on this screen, so the recap only
+  // starts by itself after a live draw (not when the page is merely reopened).
+  const announcedRef = useRef(false);
+  // The winners the recap last auto-played for; a redraw lets it play again.
+  const autoPlayedForRef = useRef<string | null>(null);
 
   const toPerson = (userId: string): RevealPerson => {
     const user = allUsers[userId];
@@ -77,9 +97,28 @@ export default function WinnersPage() {
   }, [highlightKey]);
 
   const handleRevealComplete = () => {
+    announcedRef.current = true;
     if (current) setHighlightKey(formatWinnerKey(current.prizeId, current.winnerId));
     setCurrent(null);
   };
+
+  // A new winner being announced takes over the screen from the recap.
+  useEffect(() => {
+    if (current) setShowRecap(false);
+  }, [current]);
+
+  // Once the last winner has been announced, roll the recap.
+  useEffect(() => {
+    if (!announcedRef.current || current || queue.length > 0 || showRecap) return;
+    if (!allPrizesDrawn(prizes, winners)) return;
+    const signature = winnersSignature(winners);
+    if (autoPlayedForRef.current === signature) return;
+    const timer = window.setTimeout(() => {
+      autoPlayedForRef.current = signature;
+      setShowRecap(true);
+    }, RECAP_AUTO_START_MS);
+    return () => window.clearTimeout(timer);
+  }, [current, queue.length, showRecap, prizes, winners]);
 
   const currentPrize = current ? prizes.find((p) => p.id === current.prizeId) : undefined;
   const currentTier = currentPrize ? prizeTiers.find((t) => t.id === currentPrize.tierId) : undefined;
@@ -115,6 +154,7 @@ export default function WinnersPage() {
     return (
       <div className="container mx-auto px-4 py-8">
         {reveal}
+        {showDemoRecap && !current && <NightRecap {...buildRecapDemo()} onClose={() => setShowDemoRecap(false)} />}
         <div className="text-center space-y-6">
           <div className="flex justify-center">
             <div className="p-6 bg-primary/10 rounded-full">
@@ -145,6 +185,15 @@ export default function WinnersPage() {
               </CardContent>
             </Card>
           </div>
+          {isAdmin && (
+            <div className="flex flex-col items-center gap-2 pt-4">
+              <Button variant="outline" onClick={() => setShowDemoRecap(true)} disabled={!!current}>
+                <Clapperboard className="mr-2 h-4 w-4" />
+                Preview the night recap
+              </Button>
+              <p className="text-sm text-muted-foreground">Plays with sample data. The real recap is available once winners are drawn.</p>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -153,6 +202,9 @@ export default function WinnersPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       {reveal}
+      {showRecap && !current && (
+        <NightRecap prizes={prizes} winners={winners} allUsers={allUsers} onClose={() => setShowRecap(false)} />
+      )}
 
       <div className="text-center mb-10">
         <div className="flex justify-center mb-5">
@@ -233,8 +285,14 @@ export default function WinnersPage() {
         })}
       </div>
 
-      <div className="text-center text-muted-foreground">
+      <div className="flex flex-col items-center gap-4 text-center text-muted-foreground">
         <p>Thank you to everyone who took part!</p>
+        {isAdmin && (
+          <Button variant="outline" onClick={() => setShowRecap(true)} disabled={!!current}>
+            <Clapperboard className="mr-2 h-4 w-4" />
+            Play the night recap
+          </Button>
+        )}
       </div>
     </div>
   );

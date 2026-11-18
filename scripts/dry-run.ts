@@ -4,6 +4,7 @@
  *
  *   npm run dry-run -- seed       create TEST-001..TEST-010 users and 3 "TEST Prize" prizes
  *   npm run dry-run -- allocate   spread each test user's tickets across the test prizes
+ *   npm run dry-run -- draw       draw winners for the test prizes only (weighted by tickets)
  *   npm run dry-run -- status     show test prizes, their entries and winners
  *   npm run dry-run -- clean      delete all test users, prizes, allocations and winners
  *
@@ -20,6 +21,7 @@ import { Timestamp, type DocumentReference } from 'firebase-admin/firestore';
 import { getAdminDb } from '../src/lib/server/firebaseAdmin';
 import { createUsers, USER_SECRETS, USERS } from '../src/lib/server/users';
 import { setAllocation } from '../src/lib/server/allocations';
+import { winnerDocId } from '../src/lib/winnerSync';
 
 config({ path: '.env.local' });
 
@@ -105,6 +107,41 @@ async function main() {
       await Promise.all(jobs);
       console.log(`Allocated tickets for ${users.length} test users across ${prizes.length} test prizes (${jobs.length} concurrent writes).`);
       // fall through to show the result
+    }
+    // eslint-disable-next-line no-fallthrough
+    case 'draw': {
+      if (command === 'draw') {
+        // Only TEST prizes are drawn, so real prizes and winners are never touched.
+        const { prizes } = await loadTestData();
+        const winnersSnap = await db.collection('winners').get();
+        const taken = new Set(winnersSnap.docs.map((d) => d.data().winnerId as string));
+        const batch = db.batch();
+        let drawn = 0;
+        for (const prize of prizes) {
+          const current = winnersSnap.docs.filter((d) => d.data().prizeId === prize.id).length;
+          for (let slot = current; slot < (prize.numberOfWinners || 1); slot++) {
+            // Weighted by tickets; one prize per person, like the real draw.
+            const pool = (prize.entries || []).filter((e) => e.numTickets > 0 && !taken.has(e.userId));
+            const total = pool.reduce((sum, e) => sum + e.numTickets, 0);
+            if (total === 0) break;
+            let pick = Math.random() * total;
+            const winner = pool.find((e) => (pick -= e.numTickets) < 0) || pool[pool.length - 1];
+            taken.add(winner.userId);
+            batch.set(db.collection('winners').doc(winnerDocId(prize.id, winner.userId)), {
+              prizeId: prize.id,
+              winnerId: winner.userId,
+              timestamp: Timestamp.now(),
+            });
+            drawn++;
+          }
+        }
+        if (drawn === 0) {
+          console.log('No winners drawn: the test prizes are already full, or nobody has tickets on them (run `allocate` first).');
+        } else {
+          await batch.commit();
+          console.log(`Drew ${drawn} winner(s) for the test prizes. Open /winners to watch them get announced.`);
+        }
+      }
     }
     // eslint-disable-next-line no-fallthrough
     case 'status': {
