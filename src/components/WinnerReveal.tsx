@@ -49,7 +49,7 @@ export function Confetti({ active }: { active: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
@@ -379,7 +379,7 @@ export default function WinnerReveal({
         </div>
       )}
 
-      {!reducedMotion && <Confetti active={showReveal} />}
+      <Confetti active={showReveal} />
     </div>
   );
 

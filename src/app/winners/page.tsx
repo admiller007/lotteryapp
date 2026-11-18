@@ -186,13 +186,10 @@ export default function WinnersPage() {
             </Card>
           </div>
           {isAdmin && (
-            <div className="flex flex-col items-center gap-2 pt-4">
-              <Button variant="outline" onClick={() => setShowDemoRecap(true)} disabled={!!current}>
-                <Clapperboard className="mr-2 h-4 w-4" />
-                Preview the night recap
-              </Button>
-              <p className="text-sm text-muted-foreground">Plays with sample data. The real recap is available once winners are drawn.</p>
-            </div>
+            <Button variant="outline" onClick={() => setShowDemoRecap(true)} disabled={!!current}>
+              <Clapperboard className="mr-2 h-4 w-4" />
+              Preview recap
+            </Button>
           )}
         </div>
       </div>
@@ -290,7 +287,7 @@ export default function WinnersPage() {
         {isAdmin && (
           <Button variant="outline" onClick={() => setShowRecap(true)} disabled={!!current}>
             <Clapperboard className="mr-2 h-4 w-4" />
-            Play the night recap
+            Play recap
           </Button>
         )}
       </div>

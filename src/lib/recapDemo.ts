@@ -46,5 +46,5 @@ export function buildRecapDemo() {
     'demo-prize-4': ['demo-4'],
     'demo-prize-5': ['demo-9'],
   };
-  return { prizes, winners, allUsers, eventName: 'Sample recap' };
+  return { prizes, winners, allUsers };
 }
